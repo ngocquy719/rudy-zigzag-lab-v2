@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#56 (DỰNG LẠI SẠCH — chỉ zigzag temp-pivot + HH/HL/LL + BOS/CHoCH + sửa tay)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#57 (+ LỌC SPIKE: cấu trúc phớt-lờ cây nến râu-dài bất-thường theo ATR)</span></h1>
   <div class="ctl">
     <select id="src" onchange="srcChange()">
       <option value="binance">Binance</option>
@@ -45,6 +45,9 @@
     <label>Đơn-vị-gốc K:</label>
     <input id="K" type="range" min="1" max="10" value="2" step="1" oninput="recalc()" title="K = làm-mượt: gộp swing có nhịp <K nến (bỏ swing-ảo). K=1 full chi tiết · K lớn=mượt.">
     <span id="Kv">K=2</span>
+    <label style="margin-left:10px" title="Cấu trúc PHỚT LỜ cây nến spike: cap râu dài bất-thường theo ATR (chỉ khi tính zigzag; nến trên chart vẫn vẽ râu thật). Số bên cạnh = độ nhạy (×ATR), nhỏ=gắt."><input id="deSpike" type="checkbox" checked onchange="recalc()"> Lọc spike</label>
+    <input id="spikeMult" type="range" min="2" max="6" step="0.5" value="3" oninput="recalc()" title="Ngưỡng ×ATR: râu vượt quá mức này bị cap" style="width:70px">
+    <span id="spikeMultV" style="color:#8b949e">×3</span>
   </div>
   <div class="ctl">
     <label title="Hiện nhãn HH/HL/LH/LL"><input id="showHL" type="checkbox" checked onchange="drawOverlay();saveUI()"> HH/HL</label>
@@ -101,6 +104,17 @@ function swingChain(cs,K){
   if(dir>0) push(out,{idx:HT.idx,time:cs[HT.idx].time,price:HT.p,type:'H'}); else if(dir<0) push(out,{idx:LT.idx,time:cs[LT.idx].time,price:LT.p,type:'L'});
   return smoothByLeg(mergeAlt(out), K);
 }
+
+// ATR rolling (true range trung bình n kỳ) — thước đo biên-độ CỤC-BỘ để nhận cây spike.
+function atrSeries(cs,n){ n=n||14; const tr=[],out=[]; for(let i=0;i<cs.length;i++){ const h=cs[i].high,l=cs[i].low,pc=i?cs[i-1].close:cs[i].open;
+    tr.push(Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc))); }
+  let sum=0; for(let i=0;i<cs.length;i++){ sum+=tr[i]; if(i>=n) sum-=tr[i-n]; out[i]= i<2? tr[i] : sum/Math.min(i+1,n); } return out; }
+// DE-SPIKE: cap phần RÂU vượt quá mult×ATR so với THÂN nến (chỉ cho việc tính zigzag).
+// Râu bình-thường (<mult×ATR) giữ nguyên; râu spike bị cắt về mép-thân + mult×ATR. KHÔNG nhìn-trước (causal).
+function deSpike(cs,mult){ const a=atrSeries(cs,14); return cs.map((c,i)=>{ const bodyHi=Math.max(c.open,c.close), bodyLo=Math.min(c.open,c.close), cap=mult*a[i];
+    return { time:c.time, open:c.open, close:c.close,
+      high: Math.min(c.high, bodyHi+cap),
+      low:  Math.max(c.low,  bodyLo-cap) }; }); }
 
 // BOS/CHoCH = khớp 4 swing cuối (declarative) + xác-nhận ĐÓNG-NẾN vượt level.
 function labelBOSCHoCH(cs,sw){
@@ -227,7 +241,10 @@ function recalc(){
   if(!candles.length) return;
   let K=parseInt(document.getElementById('K').value)||1; if(K<1)K=1;
   document.getElementById('Kv').textContent='K='+K+(K<=2?' (chi tiết)':K>=6?' (mượt)':'');
-  algoSwings=swingChain(candles,K);
+  const mult=parseFloat(document.getElementById('spikeMult').value)||3;
+  document.getElementById('spikeMultV').textContent='×'+mult;
+  const srcCs = document.getElementById('deSpike').checked ? deSpike(candles,mult) : candles;  // cấu trúc dùng nến đã cap-râu; chart vẫn vẽ nến thật
+  algoSwings=swingChain(srcCs,K);
   if(removedSwings.length) algoSwings=mergeAlt(algoSwings.filter(s=>!removedSwings.includes(s.time)));
   if(Object.keys(movedSwings).length || addedSwings.length){
     algoSwings=algoSwings.map(s=>{ const m=movedSwings[s.time]; return m?{...s,time:m.time,price:m.price,idx:idxAtTime(m.time)}:s; });
@@ -267,7 +284,7 @@ function applyData(){
 
 /* ===================== SỬA TAY: lưu/khôi phục + reset ===================== */
 function drawKey(){ return 'zzc:'+document.getElementById('sym').value.toUpperCase(); }
-function saveUI(){ try{ localStorage.setItem('zzc:ui',JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,K:document.getElementById('K').value,showHL:document.getElementById('showHL').checked,showSMC:document.getElementById('showSMC').checked})); }catch(e){} }
+function saveUI(){ try{ localStorage.setItem('zzc:ui',JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,K:document.getElementById('K').value,showHL:document.getElementById('showHL').checked,showSMC:document.getElementById('showSMC').checked,deSpike:document.getElementById('deSpike').checked,spikeMult:document.getElementById('spikeMult').value})); }catch(e){} }
 function saveDrawings(){ try{ localStorage.setItem(drawKey(),JSON.stringify({removedSwings,movedSwings,addedSwings})); }catch(e){} saveUI(); }
 function restoreDrawings(){ try{ const o=JSON.parse(localStorage.getItem(drawKey())||'{}'); removedSwings=o.removedSwings||[]; movedSwings=o.movedSwings||{}; addedSwings=o.addedSwings||[]; }catch(e){ removedSwings=[];movedSwings={};addedSwings=[]; } }
 function resetEdits(){ removedSwings=[]; movedSwings={}; addedSwings=[]; saveDrawings(); recalc(); document.getElementById('status').textContent='đã xoá sửa tay'; }
@@ -296,6 +313,8 @@ try{ const ui=JSON.parse(localStorage.getItem('zzc:ui')||'{}');
   if(ui.K!=null){ document.getElementById('K').value=ui.K; document.getElementById('Kv').textContent='K='+ui.K; }
   if(ui.showHL!=null) document.getElementById('showHL').checked=ui.showHL;
   if(ui.showSMC!=null) document.getElementById('showSMC').checked=ui.showSMC;
+  if(ui.deSpike!=null) document.getElementById('deSpike').checked=ui.deSpike;
+  if(ui.spikeMult!=null){ document.getElementById('spikeMult').value=ui.spikeMult; document.getElementById('spikeMultV').textContent='×'+ui.spikeMult; }
 }catch(e){}
 loadBinance();
 </script>
