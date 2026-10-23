@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#43 (CẤU-TRÚC CHẶT THEO BIAS: sau CHoCH-up chỉ HH/HL, không LH giữa uptrend)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#44 (phá vỡ bằng RÂU NẾN: đỉnh/đáy đơn-điệu tuyệt đối trong mỗi xu hướng)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -537,11 +537,11 @@ function structureBOS(cs){
   for(let i=start+1;i<cs.length;i++){
     if(cs[i].high>rhP){rhP=cs[i].high;rhI=i;} if(cs[i].low<rlP){rlP=cs[i].low;rlI=i;}
     if(fL.has(i)) armUp=true; if(fH.has(i)) armDn=true;
-    if(armUp && cs[i].close>swHigh.price){
+    if(armUp && cs[i].high>swHigh.price){   // phá bằng RÂU NẾN (đỉnh/đáy tạm) — chặt, cấu-trúc đơn-điệu tuyệt đối
       out.push({idx:swHigh.idx,time:cs[swHigh.idx].time,price:swHigh.price,type:'H'});           // đỉnh bị phá = HH
       if(rlI>swHigh.idx && rlP<Infinity) out.push({idx:rlI,time:cs[rlI].time,price:rlP,type:'L'}); // đáy hồi = HL
       swLow={idx:rlI,price:rlP}; swHigh={idx:rhI,price:rhP}; rlP=Infinity;rlI=-1; bias=1; armUp=false;
-    } else if(armDn && cs[i].close<swLow.price){
+    } else if(armDn && cs[i].low<swLow.price){
       out.push({idx:swLow.idx,time:cs[swLow.idx].time,price:swLow.price,type:'L'});               // đáy bị phá = LL
       if(rhI>swLow.idx && rhP>-Infinity) out.push({idx:rhI,time:cs[rhI].time,price:rhP,type:'H'}); // đỉnh hồi = LH
       swHigh={idx:rhI,price:rhP}; swLow={idx:rlI,price:rlP}; rhP=-Infinity;rhI=-1; bias=-1; armDn=false;
