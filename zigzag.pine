@@ -1,0 +1,157 @@
+//@version=5
+// ============================================================================
+// Rudy Zigzag Lab — SMC (temp-pivot zigzag + BOS/CHoCH tại nến break + Fibo discount)
+// Đồng bộ logic bản web: https://ngocquy719.github.io/rudy-zigzag-lab/
+// - Đỉnh/đáy TẠM: cực trị tạm còn dời tới khi giá đi ngược >= ngưỡng (×ATR) thì LOCK, đổi phe.
+//   (bar vừa lập cực trị thì KHÔNG lật ngay — chống whipsaw nến biên-độ-rộng)
+// - BOS/CHoCH: khi ĐÓNG NẾN vượt pivot đã xác nhận -> kẻ nét ngang mức cũ -> nến break + nhãn.
+// - Fibo: đo external low -> external high của leg tăng gần nhất; tô discount (xanh) / premium (đỏ).
+// Pine chạy bar-by-bar nên hoàn toàn point-in-time (không repaint tương lai như lo ngại ở backtest).
+// ============================================================================
+indicator("Rudy Zigzag Lab — SMC", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=50)
+
+// ===================== Inputs =====================
+atrLen  = input.int(14,   "ATR length", group="Cấu trúc")
+extMult = input.float(3.0,"Ngưỡng swing (×ATR) — trái=sóng lớn, phải=chi tiết", step=0.5, minval=0.5, group="Cấu trúc")
+showZig = input.bool(true,  "Vẽ zigzag",          group="Hiển thị")
+showBOS = input.bool(true,  "Nhãn BOS / CHoCH",    group="Hiển thị")
+showFib = input.bool(true,  "Vùng Fibo discount/premium", group="Hiển thị")
+colBOS  = input.color(color.gray,   "Màu BOS",   group="Hiển thị")
+colCH   = input.color(color.orange, "Màu CHoCH", group="Hiển thị")
+
+thr = extMult * ta.atr(atrLen)
+
+// ===================== State: temp-pivot =====================
+var int   dir = 0           // 0 chưa biết, +1 đang dò đỉnh, -1 đang dò đáy
+var float hiP = high
+var int   hiB = bar_index
+var float loP = low
+var int   loB = bar_index
+
+var int   lastZzB = na      // nối zigzag
+var float lastZzP = na
+
+var float confH  = na       // đỉnh đã xác nhận, chưa bị phá
+var int   confHB = na
+var float confL  = na
+var int   confLB = na
+var int   bias   = 0
+
+var float prevHigh = na     // đỉnh xác nhận trước (để biết HH = BOS tăng)
+var float extLow   = na     // đáy xác nhận gần nhất (external low ứng viên)
+var int   extLowB  = na
+var float activeH  = na     // leg xung-lực đang hiệu lực
+var float activeL  = na
+var int   activeB  = na
+
+var box  discBox = na
+var box  premBox = na
+var line midLine = na
+
+// cập nhật cực trị tạm
+bool mH = false
+bool mL = false
+if dir >= 0 and high > hiP
+    hiP := high
+    hiB := bar_index
+    mH  := true
+if dir <= 0 and low < loP
+    loP := low
+    loB := bar_index
+    mL  := true
+
+// LOCK: quyết định có chốt pivot ở bar này không
+int   addType = 0           // 1 = chốt H, -1 = chốt L
+float addP    = na
+int   addB    = na
+if dir == 0
+    if hiB >= loB and not mH and hiP - low >= thr
+        addType := 1
+        addP := hiP
+        addB := hiB
+        dir := -1
+        loP := low
+        loB := bar_index
+    else if loB > hiB and not mL and high - loP >= thr
+        addType := -1
+        addP := loP
+        addB := loB
+        dir := 1
+        hiP := high
+        hiB := bar_index
+else if dir > 0
+    if not mH and hiP - low >= thr
+        addType := 1
+        addP := hiP
+        addB := hiB
+        dir := -1
+        loP := low
+        loB := bar_index
+else
+    if not mL and high - loP >= thr
+        addType := -1
+        addP := loP
+        addB := loB
+        dir := 1
+        hiP := high
+        hiB := bar_index
+
+// ghi pivot + nối zigzag + cập nhật cấu trúc
+bool newSetup = false
+if addType != 0
+    if showZig and not na(lastZzP)
+        line.new(lastZzB, lastZzP, addB, addP, xloc=xloc.bar_index, color=color.new(color.blue, 0), width=2)
+    lastZzB := addB
+    lastZzP := addP
+    if addType == 1
+        confH  := addP
+        confHB := addB
+        if not na(prevHigh) and addP > prevHigh and not na(extLow)
+            activeH := addP
+            activeL := extLow
+            activeB := extLowB
+            newSetup := true
+        prevHigh := addP
+    else
+        confL   := addP
+        confLB  := addB
+        extLow  := addP
+        extLowB := addB
+
+// BOS / CHoCH: đóng nến vượt mức đã xác nhận -> kẻ nét + nhãn tại nến break
+if showBOS
+    if not na(confH) and close > confH
+        isBOS = bias >= 0
+        col = isBOS ? colBOS : colCH
+        line.new(confHB, confH, bar_index, confH, xloc=xloc.bar_index, color=col, width=1, style=line.style_dashed)
+        label.new(int(math.avg(confHB, bar_index)), confH, isBOS ? "BOS" : "CHoCH", xloc=xloc.bar_index, style=label.style_none, textcolor=col, size=size.small)
+        bias := 1
+        confH := na
+    else if not na(confL) and close < confL
+        isBOS2 = bias <= 0
+        col2 = isBOS2 ? colBOS : colCH
+        line.new(confLB, confL, bar_index, confL, xloc=xloc.bar_index, color=col2, width=1, style=line.style_dashed)
+        label.new(int(math.avg(confLB, bar_index)), confL, isBOS2 ? "BOS" : "CHoCH", xloc=xloc.bar_index, style=label.style_none, textcolor=col2, size=size.small)
+        bias := -1
+        confL := na
+
+// Fibo discount/premium của leg xung-lực gần nhất
+if showFib and not na(activeH) and not na(activeL) and activeH > activeL
+    mid = (activeH + activeL) / 2.0
+    if newSetup
+        if not na(discBox)
+            box.delete(discBox)
+        if not na(premBox)
+            box.delete(premBox)
+        if not na(midLine)
+            line.delete(midLine)
+        premBox := box.new(activeB, activeH, bar_index, mid, xloc=xloc.bar_index, border_color=color.new(color.red, 60),   bgcolor=color.new(color.red, 90))
+        discBox := box.new(activeB, mid, bar_index, activeL, xloc=xloc.bar_index, border_color=color.new(color.green, 60), bgcolor=color.new(color.green, 88))
+        midLine := line.new(activeB, mid, bar_index, mid, xloc=xloc.bar_index, color=color.new(color.red, 20), width=1)
+    else
+        if not na(discBox)
+            box.set_right(discBox, bar_index)
+        if not na(premBox)
+            box.set_right(premBox, bar_index)
+        if not na(midLine)
+            line.set_x2(midLine, bar_index)
