@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#40 (mỗi sóng là BOS/CHoCH; vùng range: Hộp/Nối-ngang/Hiện-hết)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#41 (hiện nhãn HH/HL/LH/LL + BOS/CHoCH trên từng sóng)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -281,6 +281,17 @@ function drawOverlay(){
         octx.setLineDash([]); octx.fillStyle=col; octx.textAlign='center'; octx.fillText(lbl,xMid,y);
       } else { octx.beginPath(); octx.moveTo(x1,y); octx.lineTo(x2,y); octx.stroke();
         octx.setLineDash([]); octx.fillStyle=col; octx.textAlign='center'; octx.fillText(lbl,xMid,y-7); }
+    }
+    // ===== nhãn HH/HL/LH/LL trên TỪNG đỉnh/đáy (bỏ qua swing trong range ở mode box/flat) =====
+    octx.textBaseline='middle'; octx.font='700 11px system-ui,Segoe UI,Arial';
+    let lastH=null,lastL=null;
+    for(let i=0;i<algoSwings.length;i++){ const s=algoSwings[i];
+      let tag; if(s.type==='H'){ tag=lastH==null?'H':(s.price>lastH?'HH':'LH'); lastH=s.price; } else { tag=lastL==null?'L':(s.price<lastL?'LL':'HL'); lastL=s.price; }
+      if(smc.orphan[i] && rmode!=='full') continue;      // range ẩn trong mode box/flat
+      const yy=candleSeries.priceToCoordinate(s.price); if(yy==null) continue;
+      let xx=ts.timeToCoordinate(s.time); if(xx==null) continue;
+      octx.fillStyle=(tag==='HH'||tag==='HL')?'#3fb950':(tag==='LH'||tag==='LL')?'#f85149':'#c9d1d9';
+      octx.textAlign='center'; octx.fillText(tag, xx, s.type==='H'? yy-11 : yy+11);
     }
   }
   drawZones(w,vr); drawPosition(w,vr); drawNotes(w,vr);
