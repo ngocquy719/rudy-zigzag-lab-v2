@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#44 (phá vỡ bằng RÂU NẾN: đỉnh/đáy đơn-điệu tuyệt đối trong mỗi xu hướng)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#45 (dùng ev NỘI-BỘ structureBOS: gắn BOS/CHoCH cho MỌI cú phá vỡ)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -529,7 +529,7 @@ function structureBOS(cs){
   const f=baseZZ(cs); if(f.length<3) return f.slice();
   const fH=new Set(), fL=new Set(); for(const fr of f){ (fr.type==='H'?fH:fL).add(fr.idx); }
   const firstH=f.find(x=>x.type==='H'), firstL=f.find(x=>x.type==='L'); if(!firstH||!firstL) return f.slice();
-  const out=[]; let bias=0;
+  const out=[], ev=[]; let bias=0;
   let swHigh={idx:firstH.idx,price:firstH.price}, swLow={idx:firstL.idx,price:firstL.price};
   let rhP=-Infinity,rhI=-1, rlP=Infinity,rlI=-1, armUp=true, armDn=true;
   const start=Math.min(firstH.idx,firstL.idx);
@@ -538,10 +538,12 @@ function structureBOS(cs){
     if(cs[i].high>rhP){rhP=cs[i].high;rhI=i;} if(cs[i].low<rlP){rlP=cs[i].low;rlI=i;}
     if(fL.has(i)) armUp=true; if(fH.has(i)) armDn=true;
     if(armUp && cs[i].high>swHigh.price){   // phá bằng RÂU NẾN (đỉnh/đáy tạm) — chặt, cấu-trúc đơn-điệu tuyệt đối
+      ev.push({type:bias>=0?'BOS':'CHoCH',pivotIdx:swHigh.idx,level:swHigh.price,breakIdx:i});     // mỗi phá vỡ = 1 nhãn
       out.push({idx:swHigh.idx,time:cs[swHigh.idx].time,price:swHigh.price,type:'H'});           // đỉnh bị phá = HH
       if(rlI>swHigh.idx && rlP<Infinity) out.push({idx:rlI,time:cs[rlI].time,price:rlP,type:'L'}); // đáy hồi = HL
       swLow={idx:rlI,price:rlP}; swHigh={idx:rhI,price:rhP}; rlP=Infinity;rlI=-1; bias=1; armUp=false;
     } else if(armDn && cs[i].low<swLow.price){
+      ev.push({type:bias<=0?'BOS':'CHoCH',pivotIdx:swLow.idx,level:swLow.price,breakIdx:i});
       out.push({idx:swLow.idx,time:cs[swLow.idx].time,price:swLow.price,type:'L'});               // đáy bị phá = LL
       if(rhI>swLow.idx && rhP>-Infinity) out.push({idx:rhI,time:cs[rhI].time,price:rhP,type:'H'}); // đỉnh hồi = LH
       swHigh={idx:rhI,price:rhP}; swLow={idx:rlI,price:rlP}; rhP=-Infinity;rhI=-1; bias=-1; armDn=false;
@@ -550,7 +552,7 @@ function structureBOS(cs){
       if(bias<0 && !armDn && rlI>=0) swLow={idx:rlI,price:rlP};
     }
   }
-  return mergeAlt(out);
+  return {sw:mergeAlt(out), ev};
 }
 // Phân tích SMC trên bộ swing: gắn BOS/CHoCH cho mỗi cú phá vỡ + đánh dấu swing/vùng RANGE (không thuộc phá vỡ nào).
 // Luật Rudy: mỗi con sóng phải HIỂU là BOS hay CHoCH; sóng không phá vỡ gì (vùng sideway) = không vẽ như cấu-trúc.
@@ -755,10 +757,11 @@ function switchAlgo(){
 function recalc(){
   if(!candles.length) return;
   const algo=document.getElementById('algo').value;
+  let bosEv=[];
   if(algo==='fractal'){
     const deg=parseInt(document.getElementById('detail').value);
     if(deg<=0){ document.getElementById('detailV').textContent='CẤU-TRÚC (BOS)';
-      algoSwings=structureBOS(candles);                 // mặc định: cấu-trúc xác-nhận bằng phá vỡ (luật Rudy)
+      const _r=structureBOS(candles); algoSwings=_r.sw; bosEv=_r.ev;   // ev nội-bộ: MỖI phá vỡ 1 nhãn BOS/CHoCH
     } else { document.getElementById('detailV').textContent='sóng con bậc '+deg;
       algoSwings=degreeZZ(candles, deg);                // deg>0: xem sóng con (fractal thưa dần, chưa lọc BOS)
     }
@@ -771,7 +774,8 @@ function recalc(){
   // ===== phân tích SMC (BOS/CHoCH + vùng range) + chế độ hiển thị range =====
   const isFrac = document.getElementById('algo').value==='fractal';
   const deg0 = parseInt(document.getElementById('detail').value)<=0;
-  smc = isFrac ? smcAnalyze(algoSwings) : {ev:[],orphan:new Array(algoSwings.length).fill(false),regions:[]};  // LUÔN gắn BOS/CHoCH
+  const an = isFrac ? smcAnalyze(algoSwings) : {ev:[],orphan:new Array(algoSwings.length).fill(false),regions:[]};
+  smc = { ev: (isFrac&&deg0)?bosEv:an.ev, orphan:an.orphan, regions:an.regions };  // deg0 dùng ev NỘI-BỘ (dày, đúng từng phá vỡ)
   const rmode = deg0 ? ((document.getElementById('rangeMode')||{}).value || 'box') : 'full';  // sóng-con: hiện hết, không khoanh range
   // box/flat: ẩn sóng trong range khỏi đường zigzag (chỉ còn cấu-trúc BOS/CHoCH); full: hiện hết
   const lineSw = (rmode!=='full') ? algoSwings.filter((s,i)=>!smc.orphan[i]) : algoSwings;
@@ -781,7 +785,7 @@ function recalc(){
   algoSeries.setData(pts);
   // EXTERNAL = cấu trúc khung LỚN (không phải swing khung đang xem)
   if(extCandles.length){
-    extSwings=structureBOS(extCandles);  // external = cấu-trúc khung lớn xác-nhận bằng BOS
+    extSwings=structureBOS(extCandles).sw;  // external = cấu-trúc khung lớn xác-nhận bằng BOS
     const ep=[]; for(const s of extSwings){ let t=s.time; if(ep.length && t<=ep[ep.length-1].time) t=ep[ep.length-1].time+1; ep.push({time:t,value:s.price}); }
     if(extSeries) extSeries.setData(ep);
   } else { extSwings=[]; if(extSeries) extSeries.setData([]); }
