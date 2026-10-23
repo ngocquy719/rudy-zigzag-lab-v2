@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#47 (fix bug re-emit khi CHoCH -> hết swing lọt giữa swing mẹ)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#48 (lọc luân-phiên đậm/mờ: bỏ swing cả-2-sườn-hồi -> hết 2-nét-mờ-liền)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -570,6 +570,14 @@ function structureBOS(cs){
   }
   return {sw:mergeAlt(out), ev};
 }
+// LUẬT RUDY: nhịp phải LUÂN PHIÊN đậm(cấu-trúc)–mờ(hồi). Swing nào CẢ 2 SƯỜN đều mờ (HL/LH 2 bên)
+// = con sóng chỉ toàn hồi, không phá gì -> BỎ. Lặp tới khi hết 2-nét-mờ-liền.
+function tagSwings(sw){ let lH=null,lL=null; return sw.map(s=>{ let t; if(s.type==='H'){t=lH==null?'H':(s.price>lH?'HH':'LH');lH=s.price;} else {t=lL==null?'L':(s.price<lL?'LL':'HL');lL=s.price;} return t; }); }
+function alternateStruct(sw){ let z=sw.slice();
+  for(let pass=0;pass<80 && z.length>3;pass++){ const tag=tagSwings(z); let rm=-1;
+    for(let k=1;k+1<z.length;k++){ const a=tag[k],b=tag[k+1]; if((a==='HL'||a==='LH')&&(b==='HL'||b==='LH')){ rm=k; break; } }
+    if(rm<0) break; z.splice(rm,1); z=mergeAlt(z); }
+  return z; }
 // Phân tích SMC trên bộ swing: gắn BOS/CHoCH cho mỗi cú phá vỡ + đánh dấu swing/vùng RANGE (không thuộc phá vỡ nào).
 // Luật Rudy: mỗi con sóng phải HIỂU là BOS hay CHoCH; sóng không phá vỡ gì (vùng sideway) = không vẽ như cấu-trúc.
 function smcAnalyze(sw){
@@ -777,7 +785,7 @@ function recalc(){
   if(algo==='fractal'){
     const deg=parseInt(document.getElementById('detail').value);
     if(deg<=0){ document.getElementById('detailV').textContent='CẤU-TRÚC (BOS)';
-      const _r=structureBOS(candles); algoSwings=_r.sw; bosEv=_r.ev;   // ev nội-bộ: MỖI phá vỡ 1 nhãn BOS/CHoCH
+      const _r=structureBOS(candles); algoSwings=alternateStruct(_r.sw); bosEv=_r.ev;   // ev nội-bộ + lọc luân-phiên đậm/mờ
     } else { document.getElementById('detailV').textContent='sóng con bậc '+deg;
       algoSwings=degreeZZ(candles, deg);                // deg>0: xem sóng con (fractal thưa dần, chưa lọc BOS)
     }
