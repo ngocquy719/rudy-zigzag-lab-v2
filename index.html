@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#51 (Ctrl+kéo dời pivot · Shift+click thêm pivot)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#52 (swing-đầu tính nét đậm hết mờ-mờ mép trái; lọc 4-ca cả chế-độ sóng-con)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -310,10 +310,10 @@ function drawOverlay(){
     const coord=s=>{ const yy=candleSeries.priceToCoordinate(s.price); let xx=ts.timeToCoordinate(s.time); return (yy==null||xx==null)?null:{x:xx,y:yy}; };
     octx.lineWidth=2.5; octx.lineCap='round';
     for(let i=0;i+1<algoSwings.length;i++){ const t2=TAG[i+1];
-      if(t2!=='HH'&&t2!=='LL') continue;                  // chỉ sườn tạo cấu-trúc
+      const up=(t2==='HH'||t2==='H'), dn=(t2==='LL'||t2==='L'); if(!up&&!dn) continue;  // sườn tạo cấu-trúc (gồm swing đầu)
       if((smc.orphan[i]||smc.orphan[i+1]) && rmode!=='full') continue;
       const a=coord(algoSwings[i]), b=coord(algoSwings[i+1]); if(!a||!b) continue;
-      octx.strokeStyle = t2==='HH' ? '#3fb950' : '#f85149';   // lên phá đỉnh = xanh, xuống phá đáy = đỏ
+      octx.strokeStyle = up ? '#3fb950' : '#f85149';   // lên phá đỉnh = xanh, xuống phá đáy = đỏ
       octx.beginPath(); octx.moveTo(a.x,a.y); octx.lineTo(b.x,b.y); octx.stroke();
     }
     octx.lineWidth=1; octx.lineCap='butt';
@@ -595,7 +595,7 @@ function tagSwings(sw){ let lH=null,lL=null; return sw.map(s=>{ let t; if(s.type
 // 4 trường-hợp hợp-lệ (Rudy): Đỏ-mờ-đỏ / Đỏ-xanh-mờ / Xanh-mờ-xanh / Xanh-đỏ-mờ.
 // Loại 2 vi-phạm: (1) 2 nét mờ liền (swing cả-2-sườn-hồi) · (2) CHoCH-giả RGR/GRG (phá đỉnh rồi phá đáy ngay, ko hồi).
 // GOM hết vi-phạm 1 lượt rồi xoá (KHÔNG re-tag dây-chuyền -> không cascade sập); lặp vài lượt cho hội tụ.
-function legColor(tag,i){ const t=tag[i+1]; return t==='HH'?'G':t==='LL'?'R':'M'; }
+function legColor(tag,i){ const t=tag[i+1]; return (t==='HH'||t==='H')?'G':(t==='LL'||t==='L')?'R':'M'; }  // swing ĐẦU (H/L) = gốc cấu-trúc, tính nét đậm
 function clean1pass(sw){ const tg=tagSwings(sw); const rm=new Set();
   for(let i=0;i+2<sw.length;i++){ const a=legColor(tg,i),b=legColor(tg,i+1),c=legColor(tg,i+2);
     if(a==='M'&&b==='M') rm.add(i+1);                                   // 2 nét mờ -> bỏ swing giữa
@@ -813,7 +813,7 @@ function recalc(){
     if(deg<=0){ document.getElementById('detailV').textContent='CẤU-TRÚC (BOS)';
       const _r=structureBOS(candles); algoSwings=alternateStruct(_r.sw); bosEv=_r.ev;   // ev nội-bộ + lọc luân-phiên đậm/mờ
     } else { document.getElementById('detailV').textContent='sóng con bậc '+deg;
-      algoSwings=degreeZZ(candles, deg);                // deg>0: xem sóng con (fractal thưa dần, chưa lọc BOS)
+      algoSwings=alternateStruct(degreeZZ(candles, deg));  // deg>0: sóng con + lọc 4-ca (hết mờ-mờ)
     }
   }else{
     const mr=parseFloat(document.getElementById('minRetr').value);
