@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#52 (swing-đầu tính nét đậm hết mờ-mờ mép trái; lọc 4-ca cả chế-độ sóng-con)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#53 (DỰNG LẠI LÕI: SMC chuẩn - swing pivot-N + BOS/CHoCH khớp-4-mẫu + tầng internal/external)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -70,15 +70,10 @@
     </select>
   </div>
   <div class="ctl" id="fracCtl">
-    <label>Cấu trúc:</label>
-    <input id="detail" type="range" min="0" max="6" value="0" step="1" oninput="recalc()" title="0 = CẤU-TRÚC thật (chỉ chốt pivot khi đóng nến PHÁ đỉnh/đáy cũ — BOS). 1+ = xem sóng con fractal thưa dần (chưa lọc phá vỡ).">
-    <span id="detailV">CẤU-TRÚC (BOS)</span>
-    <label style="margin-left:10px" title="Cách hiển thị vùng SIDEWAY (không có BOS/CHoCH sạch). Hộp = khoanh range chờ phá · Nối ngang = ẩn sóng range · Hiện hết = vẽ cả sóng con.">Range:</label>
-    <select id="rangeMode" onchange="recalc()">
-      <option value="box">Hộp chờ phá</option>
-      <option value="flat">Nối ngang (ẩn)</option>
-      <option value="full">Hiện hết sóng</option>
-    </select>
+    <label>Độ mịn N:</label>
+    <input id="detail" type="range" min="3" max="20" value="8" step="1" oninput="recalc()" title="Lookback N nến mỗi bên để xác-định swing. N nhỏ = SWING khung nhỏ (chi tiết) · N lớn = SWING khung lớn (external). Mỗi swing phải cao/thấp nhất trong ±N nến.">
+    <span id="detailV">N=8</span>
+    <label style="margin-left:10px" title="Hiện tầng INTERNAL (N nhỏ hơn ~3×) nét mờ — mấy 'sóng ngoài 4 mẫu' = cấu-trúc khung nhỏ hơn"><input id="showInt" type="checkbox" onchange="drawOverlay();saveUI()"> Internal (mờ)</label>
   </div>
   <div class="ctl" id="pctCtl" style="display:none">
     <label>Độ sâu hồi:</label>
@@ -158,6 +153,7 @@ let movedSwings={};     // {thời-điểm-gốc: {time,price}} — Ctrl+kéo d�
 let addedSwings=[];     // [{time,price,type}] — Shift+click thêm pivot
 let swingDrag=null;     // đang kéo pivot nào (Ctrl)
 let smc={ev:[],orphan:[],regions:[]};   // phân tích BOS/CHoCH + vùng range (tính trong recalc)
+let intSwings=[];   // tầng INTERNAL (N nhỏ) — vẽ mờ
 
 function initChart(){
   const el = document.getElementById('chart');
@@ -271,19 +267,13 @@ function drawOverlay(){
   const fv=document.getElementById('showFvg'); if(fv && fv.checked) drawFVGs(w,vr);
   if(document.getElementById('algo').value==='fractal' && document.getElementById('showSmc').checked){
     drawFibZone(w);
-    // VÙNG RANGE: mode box -> khoanh hộp "chờ phá"; mode flat -> gạch ngang mờ (sóng đã ẩn khỏi zigzag)
-    const rmode=(parseInt(document.getElementById('detail').value)<=0)?((document.getElementById('rangeMode')||{}).value||'box'):'full';
-    if(rmode==='box'||rmode==='flat'){
-      for(const r of (smc.regions||[])){ const a=algoSwings[r[0]], b=algoSwings[r[1]]; if(!a||!b) continue;
-        let rlo=Infinity,rhi=-Infinity; for(let k=a.idx;k<=b.idx&&k<candles.length;k++){ if(candles[k].low<rlo)rlo=candles[k].low; if(candles[k].high>rhi)rhi=candles[k].high; }
-        const yT=candleSeries.priceToCoordinate(rhi), yB=candleSeries.priceToCoordinate(rlo); if(yT==null||yB==null) continue;
-        let x1=ts.timeToCoordinate(a.time); if(x1==null) x1=(a.time<=vr.from)?0:w;
-        let x2=ts.timeToCoordinate(b.time); if(x2==null) x2=(b.time<=vr.from)?0:w;
-        if(rmode==='box'){ octx.fillStyle='rgba(130,140,160,0.10)'; octx.fillRect(x1,yT,x2-x1,yB-yT);
-          octx.strokeStyle='#6e7781'; octx.lineWidth=1; octx.setLineDash([5,4]); octx.strokeRect(x1,yT,x2-x1,yB-yT); octx.setLineDash([]);
-          octx.fillStyle='#8b949e'; octx.textAlign='center'; octx.fillText('RANGE · chờ phá',(x1+x2)/2,yT-8);
-        } else { octx.strokeStyle='#6e7781'; octx.lineWidth=1; octx.setLineDash([4,4]); octx.beginPath(); octx.moveTo(x1,(yT+yB)/2); octx.lineTo(x2,(yT+yB)/2); octx.stroke(); octx.setLineDash([]); }
-      }
+    // ===== TẦNG INTERNAL (N nhỏ): zigzag MỜ nét-đứt — "sóng ngoài 4 mẫu" = cấu-trúc khung nhỏ hơn =====
+    const sInt=document.getElementById('showInt');
+    if(sInt && sInt.checked && intSwings.length>1){
+      octx.strokeStyle='rgba(120,130,150,0.55)'; octx.lineWidth=1; octx.setLineDash([2,3]); octx.beginPath();
+      let started=false;
+      for(const s of intSwings){ const yy=candleSeries.priceToCoordinate(s.price); let xx=ts.timeToCoordinate(s.time); if(yy==null||xx==null) continue; if(!started){octx.moveTo(xx,yy);started=true;} else octx.lineTo(xx,yy); }
+      octx.stroke(); octx.setLineDash([]);
     }
     octx.textBaseline='middle';
     for(const e of smc.ev){
@@ -311,7 +301,6 @@ function drawOverlay(){
     octx.lineWidth=2.5; octx.lineCap='round';
     for(let i=0;i+1<algoSwings.length;i++){ const t2=TAG[i+1];
       const up=(t2==='HH'||t2==='H'), dn=(t2==='LL'||t2==='L'); if(!up&&!dn) continue;  // sườn tạo cấu-trúc (gồm swing đầu)
-      if((smc.orphan[i]||smc.orphan[i+1]) && rmode!=='full') continue;
       const a=coord(algoSwings[i]), b=coord(algoSwings[i+1]); if(!a||!b) continue;
       octx.strokeStyle = up ? '#3fb950' : '#f85149';   // lên phá đỉnh = xanh, xuống phá đáy = đỏ
       octx.beginPath(); octx.moveTo(a.x,a.y); octx.lineTo(b.x,b.y); octx.stroke();
@@ -321,7 +310,6 @@ function drawOverlay(){
     const showHL=document.getElementById('showHL'); if(showHL && showHL.checked){
     octx.textBaseline='middle'; octx.font='700 11px system-ui,Segoe UI,Arial';
     for(let i=0;i<algoSwings.length;i++){ const s=algoSwings[i], tag=TAG[i];
-      if(smc.orphan[i] && rmode!=='full') continue;      // range ẩn trong mode box/flat
       const yy=candleSeries.priceToCoordinate(s.price); if(yy==null) continue;
       let xx=ts.timeToCoordinate(s.time); if(xx==null) continue;
       octx.fillStyle=(tag==='HH'||tag==='HL')?'#3fb950':(tag==='LH'||tag==='LL')?'#f85149':'#c9d1d9';
@@ -532,6 +520,37 @@ function computePivots(cs, thr){
 // reduceOnce = gộp 1 bậc: giữ H/L là cực-trị-cục-bộ so với cùng loại 2 bên → ~4× thưa đều.
 // Độ mịn = SỐ BẬC (degree), KHÔNG phải ngưỡng → đúng HH/HL ở MỌI khung, mật-độ đồng-đều.
 function mergeAlt(zz){ const r=[]; for(const q of zz){ if(r.length && r[r.length-1].type===q.type){ const L=r[r.length-1]; if((q.type==='H'&&q.price>L.price)||(q.type==='L'&&q.price<L.price)) r[r.length-1]=q; } else r.push(q); } return r; }
+
+// ========== LÕI MỚI (SMC chuẩn, research 23/10) — xem STRUCTURE_SPEC.md ==========
+// BƯỚC 1: swing = PIVOT có lookback N nến mỗi bên (N nhỏ=internal, lớn=swing). Lọc 2 cùng-loại + ép biên.
+function swingHL(cs,N){
+  const n=cs.length; if(n<2*N+1) return [];
+  const hl=new Array(n).fill(0);
+  for(let i=0;i<n;i++){ let isH=true,isL=true; const a=Math.max(0,i-N),b=Math.min(n-1,i+N);
+    for(let k=a;k<=b;k++){ if(cs[k].high>cs[i].high)isH=false; if(cs[k].low<cs[i].low)isL=false; }
+    hl[i]= isH?1:(isL?-1:0); }
+  let ch=true; while(ch){ ch=false; let prev=-1;
+    for(let i=0;i<n;i++){ if(hl[i]===0)continue; if(prev<0){prev=i;continue;}
+      if(hl[i]===hl[prev]){ if(hl[i]===1){ if(cs[i].high>=cs[prev].high)hl[prev]=0; else hl[i]=0; } else { if(cs[i].low<=cs[prev].low)hl[prev]=0; else hl[i]=0; } ch=true; prev=hl[i]!==0?i:(hl[prev]!==0?prev:-1); } else prev=i; } }
+  const sw=[]; for(let i=0;i<n;i++) if(hl[i]!==0) sw.push({idx:i,time:cs[i].time,price:hl[i]===1?cs[i].high:cs[i].low,type:hl[i]===1?'H':'L'});
+  return sw;
+}
+// BƯỚC 2+3: BOS/CHoCH = KHỚP 4 SWING cuối (declarative) + XÁC NHẬN đóng-nến vượt level.
+function labelBOSCHoCH(cs,sw){
+  const ev=[];
+  for(let i=3;i<sw.length;i++){
+    const s4=sw[i-3],s3=sw[i-2],s2=sw[i-1],s1=sw[i], pat=s4.type+s3.type+s2.type+s1.type;
+    const L4=s4.price,L3=s3.price,L2=s2.price,L1=s1.price; let type=null,dir=0;
+    if(pat==='LHLH' && L4<L2&&L2<L3&&L3<L1){type='BOS';dir=1;}
+    else if(pat==='HLHL' && L4>L2&&L2>L3&&L3>L1){type='BOS';dir=-1;}
+    else if(pat==='LHLH' && L1>L3&&L3>L4&&L4>L2){type='CHoCH';dir=1;}
+    else if(pat==='HLHL' && L1<L3&&L3<L4&&L4<L2){type='CHoCH';dir=-1;}
+    if(type){ const lvl=s3.price; let brk=-1;
+      for(let j=s2.idx+1;j<cs.length;j++){ if(dir>0? cs[j].close>lvl : cs[j].close<lvl){brk=j;break;} }
+      if(brk>=0) ev.push({pivotIdx:s3.idx,level:lvl,type,dir,breakIdx:brk}); }
+  }
+  return ev;
+}
 function baseZZ(cs){
   const p=[];
   for(let i=1;i<cs.length-1;i++){
@@ -807,42 +826,33 @@ function switchAlgo(){
 function recalc(){
   if(!candles.length) return;
   const algo=document.getElementById('algo').value;
-  let bosEv=[];
   if(algo==='fractal'){
-    const deg=parseInt(document.getElementById('detail').value);
-    if(deg<=0){ document.getElementById('detailV').textContent='CẤU-TRÚC (BOS)';
-      const _r=structureBOS(candles); algoSwings=alternateStruct(_r.sw); bosEv=_r.ev;   // ev nội-bộ + lọc luân-phiên đậm/mờ
-    } else { document.getElementById('detailV').textContent='sóng con bậc '+deg;
-      algoSwings=alternateStruct(degreeZZ(candles, deg));  // deg>0: sóng con + lọc 4-ca (hết mờ-mờ)
-    }
+    let N=parseInt(document.getElementById('detail').value)||8; if(N<2)N=8;
+    document.getElementById('detailV').textContent='N='+N+(N<=4?' (chi tiết)':N>=12?' (swing lớn)':'');
+    algoSwings=swingHL(candles,N);                              // EXTERNAL/swing (độ mịn N)
+    intSwings=swingHL(candles, Math.max(2,Math.round(N/3)));    // INTERNAL (N nhỏ hơn ~3×)
   }else{
     const mr=parseFloat(document.getElementById('minRetr').value);
     document.getElementById('minRetrV').textContent=mr.toFixed(2);
-    algoSwings=computeZigzag(candles,mr);
+    algoSwings=computeZigzag(candles,mr); intSwings=[];
   }
-  if(removedSwings.length) algoSwings=mergeAlt(algoSwings.filter(s=>!removedSwings.includes(s.time)));  // gỡ sóng bỏ tay + gộp lại alternation (tránh 2 đỉnh/2 đáy liên tiếp)
+  if(removedSwings.length) algoSwings=mergeAlt(algoSwings.filter(s=>!removedSwings.includes(s.time)));  // gỡ sóng bỏ tay
   // ===== sửa tay: Ctrl+kéo dời pivot · Shift+click thêm pivot =====
-  const hasEdit = Object.keys(movedSwings).length || addedSwings.length;
-  if(hasEdit){
+  if(Object.keys(movedSwings).length || addedSwings.length){
     algoSwings = algoSwings.map(s=>{ const m=movedSwings[s.time]; return m? {...s, time:m.time, price:m.price, idx:bigIdxAtTime(m.time)} : s; });
     for(const a of addedSwings){ algoSwings.push({idx:bigIdxAtTime(a.time), time:a.time, price:a.price, type:a.type}); }
     algoSwings.sort((x,y)=>x.time-y.time);
   }
-  // ===== phân tích SMC (BOS/CHoCH + vùng range) + chế độ hiển thị range =====
-  const isFrac = document.getElementById('algo').value==='fractal';
-  const deg0 = parseInt(document.getElementById('detail').value)<=0;
-  const an = isFrac ? smcAnalyze(algoSwings) : {ev:[],orphan:new Array(algoSwings.length).fill(false),regions:[]};
-  smc = { ev: (isFrac&&deg0&&!hasEdit)?bosEv:an.ev, orphan:an.orphan, regions:an.regions };  // deg0 ko-sửa dùng ev NỘI-BỘ; có sửa tay thì tính lại theo swing
-  const rmode = deg0 ? ((document.getElementById('rangeMode')||{}).value || 'box') : 'full';  // sóng-con: hiện hết, không khoanh range
-  // box/flat: ẩn sóng trong range khỏi đường zigzag (chỉ còn cấu-trúc BOS/CHoCH); full: hiện hết
-  const lineSw = (rmode!=='full') ? algoSwings.filter((s,i)=>!smc.orphan[i]) : algoSwings;
+  // ===== BOS/CHoCH = khớp-4-mẫu + xác-nhận close (tính SAU khi sửa tay) =====
+  smc = { ev: algo==='fractal'? labelBOSCHoCH(candles, algoSwings) : [], orphan:new Array(algoSwings.length).fill(false), regions:[] };
+  const lineSw = algoSwings;
   // đảm bảo thời gian tăng dần (lightweight-charts yêu cầu). KHI 1 nến vừa là đỉnh vừa là đáy
   // (nến biên-độ-rộng) -> 2 vertex trùng bar: NHÍCH vertex sau +epsilon để GIỮ CẢ HAI.
   const pts=[]; for(const s of lineSw){ let t=s.time; if(pts.length && t<=pts[pts.length-1].time) t=pts[pts.length-1].time+60; pts.push({time:t,value:s.price}); }
   algoSeries.setData(pts);
   // EXTERNAL = cấu trúc khung LỚN (không phải swing khung đang xem)
   if(extCandles.length){
-    extSwings=structureBOS(extCandles).sw;  // external = cấu-trúc khung lớn xác-nhận bằng BOS
+    extSwings=swingHL(extCandles, 8);  // external = cấu-trúc khung lớn (swing lookback)
     const ep=[]; for(const s of extSwings){ let t=s.time; if(ep.length && t<=ep[ep.length-1].time) t=ep[ep.length-1].time+1; ep.push({time:t,value:s.price}); }
     if(extSeries) extSeries.setData(ep);
   } else { extSwings=[]; if(extSeries) extSeries.setData([]); }
@@ -900,7 +910,7 @@ function onChartClick(param){
 }
 // ---- lưu/khôi phục theo mã (F5 không mất việc) ----
 function drawKey(){ return 'zz:'+document.getElementById('sym').value.toUpperCase(); }   // nét theo MÃ (đổi khung không mất)
-function saveUI(){ try{ localStorage.setItem('zz:ui', JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,detail:document.getElementById('detail').value,rangeMode:(document.getElementById('rangeMode')||{}).value,showHL:!!(document.getElementById('showHL')&&document.getElementById('showHL').checked),fvg:!!(document.getElementById('showFvg')&&document.getElementById('showFvg').checked)})); }catch(e){} }
+function saveUI(){ try{ localStorage.setItem('zz:ui', JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,detail:document.getElementById('detail').value,showInt:!!(document.getElementById('showInt')&&document.getElementById('showInt').checked),showHL:!!(document.getElementById('showHL')&&document.getElementById('showHL').checked),fvg:!!(document.getElementById('showFvg')&&document.getElementById('showFvg').checked)})); }catch(e){} }
 function saveDrawings(){ try{ localStorage.setItem(drawKey(), JSON.stringify({userPoints,posOrder,userNotes,zones,removedSwings,movedSwings,addedSwings})); }catch(e){} saveUI(); }
 function restoreDrawings(){ try{ const s=localStorage.getItem(drawKey()); const o=s?JSON.parse(s):{}; userPoints=o.userPoints||[]; posOrder=o.posOrder||null; userNotes=o.userNotes||[]; zones=o.zones||[]; removedSwings=o.removedSwings||[]; movedSwings=o.movedSwings||{}; addedSwings=o.addedSwings||[]; }catch(e){ userPoints=[];posOrder=null;userNotes=[];zones=[];removedSwings=[];movedSwings={};addedSwings=[]; } renderUser(); drawOverlay(); }
 function renderUser(){
@@ -952,7 +962,7 @@ async function switchTF(tf){
   const st=document.getElementById('sendStatus'), oc=st.textContent; st.style.color='#8b949e'; st.textContent='⏳ nạp '+tf+'...';
   try{ const cs=await fetchPaged(sym,tf,startMs,endMs); if(!cs.length){ st.textContent='lỗi nạp '+tf; return; }
     candles=cs; candleSeries.setData(candles);
-    if(activeSig){ document.getElementById('detail').value=0; document.getElementById('detailV').textContent='CẤU-TRÚC (BOS)'; }  // luôn dùng cấu-trúc xác-nhận
+    if(activeSig){ document.getElementById('detail').value=8; document.getElementById('detailV').textContent='N=8'; }  // swing mặc định
     recalc(); renderUser();
     try{ chart.timeScale().setVisibleRange({from:center-120*bar, to:center+40*bar}); }catch(e){ chart.timeScale().fitContent(); }
     drawOverlay(); st.textContent=oc; saveUI();
@@ -1092,8 +1102,8 @@ initChart();
 try{ const ui=JSON.parse(localStorage.getItem('zz:ui')||'{}');
   if(ui.sym) document.getElementById('sym').value=ui.sym;
   if(ui.tf) document.getElementById('tf').value=ui.tf;
-  if(ui.detail!=null){ const dEl=document.getElementById('detail'); dEl.value=Math.min(6,Math.max(0,ui.detail|0)); document.getElementById('detailV').textContent=dEl.value<=0?'CẤU-TRÚC (BOS)':'sóng con bậc '+dEl.value; }
-  if(ui.rangeMode && document.getElementById('rangeMode')) document.getElementById('rangeMode').value=ui.rangeMode;
+  if(ui.detail!=null){ const dEl=document.getElementById('detail'); dEl.value=Math.min(20,Math.max(3,ui.detail|0||8)); document.getElementById('detailV').textContent='N='+dEl.value; }
+  if(ui.showInt!=null && document.getElementById('showInt')) document.getElementById('showInt').checked=ui.showInt;
   if(ui.showHL!=null && document.getElementById('showHL')) document.getElementById('showHL').checked=ui.showHL;
   if(ui.fvg) document.getElementById('showFvg').checked=true;
 }catch(e){}
