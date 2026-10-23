@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#58 (LÕI MỚI zigzag ATR-deviation — hết KẸT sau pump; đảo theo mức hồi ×ATR)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#59 (zigzag ATR-deviation — hết KẸT; mặc định 2×ATR cho thoáng)</span></h1>
   <div class="ctl">
     <select id="src" onchange="srcChange()">
       <option value="binance">Binance</option>
@@ -43,8 +43,8 @@
   </div>
   <div class="ctl">
     <label>Độ nhạy swing:</label>
-    <input id="dev" type="range" min="0.5" max="4" value="1.5" step="0.1" oninput="recalc()" title="Đảo swing khi giá HỒI ngược ≥ (số này)×ATR so với đỉnh/đáy hiện tại. Nhỏ=nhiều swing chi tiết · Lớn=ít swing lớn. Ngưỡng theo ATR cục-bộ (scale-invariant) nên KHÔNG kẹt sau cú pump.">
-    <span id="devV">1.5×ATR</span>
+    <input id="dev" type="range" min="0.5" max="5" value="2" step="0.1" oninput="recalc()" title="Đảo swing khi giá HỒI ngược ≥ (số này)×ATR so với đỉnh/đáy hiện tại. Nhỏ=nhiều swing chi tiết · Lớn=ít swing lớn (thoáng). Ngưỡng theo ATR cục-bộ (scale-invariant) nên KHÔNG kẹt sau cú pump.">
+    <span id="devV">2×ATR</span>
     <label style="margin-left:10px" title="Cấu trúc PHỚT LỜ cây nến spike: cap râu dài bất-thường theo ATR (chỉ khi tính zigzag; nến trên chart vẫn vẽ râu thật). Số bên cạnh = độ nhạy (×ATR), nhỏ=gắt."><input id="deSpike" type="checkbox" checked onchange="recalc()"> Lọc spike</label>
     <input id="spikeMult" type="range" min="2" max="6" step="0.5" value="3" oninput="recalc()" title="Ngưỡng ×ATR: râu vượt quá mức này bị cap" style="width:70px">
     <span id="spikeMultV" style="color:#8b949e">×3</span>
