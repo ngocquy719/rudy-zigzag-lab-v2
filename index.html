@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#60 (fix: đỉnh+đáy KHÔNG còn cùng 1 nến — cấm đảo trên cây vừa lập cực-trị)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#61 (VỀ ĐƠN-VỊ-GỐC K nến: pivot ±K thuần theo NẾN — bỏ ATR; ko kẹt, ko swing-ảo, ko cùng-nến)</span></h1>
   <div class="ctl">
     <select id="src" onchange="srcChange()">
       <option value="binance">Binance</option>
@@ -42,9 +42,9 @@
     <button class="primary" onclick="loadBinance()">Tải</button>
   </div>
   <div class="ctl">
-    <label>Độ nhạy swing:</label>
-    <input id="dev" type="range" min="0.5" max="5" value="2" step="0.1" oninput="recalc()" title="Đảo swing khi giá HỒI ngược ≥ (số này)×ATR so với đỉnh/đáy hiện tại. Nhỏ=nhiều swing chi tiết · Lớn=ít swing lớn (thoáng). Ngưỡng theo ATR cục-bộ (scale-invariant) nên KHÔNG kẹt sau cú pump.">
-    <span id="devV">2×ATR</span>
+    <label>Độ mịn (đơn-vị-gốc):</label>
+    <input id="base" type="range" min="2" max="12" value="3" step="1" oninput="recalc()" title="Đơn-vị-gốc K nến: một đỉnh = nến CAO NHẤT trong K nến trái + K nến phải (đáy = thấp nhất). Swing luôn kéo dài ≥ K nến -> bỏ swing-ảo. K nhỏ=chi tiết · K lớn=mượt/khung-lớn. Thuần theo NẾN (ko theo ATR), ko kẹt.">
+    <span id="baseV">K=3 nến</span>
     <label style="margin-left:10px" title="Cấu trúc PHỚT LỜ cây nến spike: cap râu dài bất-thường theo ATR (chỉ khi tính zigzag; nến trên chart vẫn vẽ râu thật). Số bên cạnh = độ nhạy (×ATR), nhỏ=gắt."><input id="deSpike" type="checkbox" checked onchange="recalc()"> Lọc spike</label>
     <input id="spikeMult" type="range" min="2" max="6" step="0.5" value="3" oninput="recalc()" title="Ngưỡng ×ATR: râu vượt quá mức này bị cap" style="width:70px">
     <span id="spikeMultV" style="color:#8b949e">×3</span>
@@ -73,25 +73,26 @@
 // Gộp 2 swing cùng loại liên tiếp -> giữ cái cực hơn (ép so-le H/L/H/L).
 function mergeAlt(zz){ const r=[]; for(const q of zz){ if(r.length && r[r.length-1].type===q.type){ const L=r[r.length-1]; if((q.type==='H'&&q.price>L.price)||(q.type==='L'&&q.price<L.price)) r[r.length-1]=q; } else r.push(q); } return r; }
 
-// ZIGZAG = ATR-DEVIATION: đỉnh/đáy tạm dời theo giá; ĐẢO chiều khi giá HỒI ngược ≥ dev×ATR
-// so với cực-trị hiện tại. Ngưỡng theo ATR CỤC-BỘ nên scale-invariant -> KHÔNG bao giờ KẸT
-// sau cú pump (khác luật 'phá đáy cũ' làm kẹt cả đoạn sideways). dev nhỏ=nhiều swing chi tiết.
-function swingChain(cs,dev){
-  if(cs.length<3) return [];
-  dev=dev||1.5; const a=atrSeries(cs,14); const out=[]; let dir=0;
-  let hi={idx:0,p:cs[0].high}, lo={idx:0,p:cs[0].low};
-  const push=s=>{ if(out.length && out[out.length-1].type===s.type){ const L=out[out.length-1];
-      if((s.type==='H'&&s.price>=L.price)||(s.type==='L'&&s.price<=L.price)) out[out.length-1]=s; } else out.push(s); };
-  for(let i=1;i<cs.length;i++){ const c=cs[i], thr=dev*a[i];
-    if(c.high>hi.p) hi={idx:i,p:c.high};
-    if(c.low<lo.p) lo={idx:i,p:c.low};
-    // GUARD hi.idx<i / lo.idx<i: CẤM đảo ngay trên cây vừa lập cực-trị -> đỉnh & đáy KHÔNG BAO GIỜ cùng 1 nến
-    if(dir>=0 && hi.idx<i && c.low < hi.p-thr){ push({idx:hi.idx,time:cs[hi.idx].time,price:hi.p,type:'H'}); dir=-1; lo={idx:i,p:c.low}; }
-    else if(dir<=0 && lo.idx<i && c.high > lo.p+thr){ push({idx:lo.idx,time:cs[lo.idx].time,price:lo.p,type:'L'}); dir=1; hi={idx:i,p:c.high}; }
+// ZIGZAG = PIVOT ±K (ĐƠN-VỊ-GỐC tối thiểu K nến): một ĐỈNH = nến CAO NHẤT trong K nến TRÁI + K nến PHẢI
+// (ĐÁY = thấp nhất). Thuần theo NẾN (ko theo biên-độ giá/ATR) nên swing luôn ≥ K nến -> bỏ swing-ảo;
+// cửa-sổ-trượt nên KHÔNG BAO GIỜ KẸT (kể cả sau cú pump). K nhỏ=chi tiết · K lớn=mượt/khung-lớn.
+function swingChain(cs,K){ K=Math.max(2,K||3); const n=cs.length; if(n<3) return []; const pts=[];
+  for(let i=0;i<n;i++){ const a=Math.max(0,i-K), b=Math.min(n-1,i+K);
+    let maxO=-Infinity,minO=Infinity; for(let j=a;j<=b;j++){ if(j===i)continue; if(cs[j].high>maxO)maxO=cs[j].high; if(cs[j].low<minO)minO=cs[j].low; }
+    const isH=cs[i].high>=maxO, isL=cs[i].low<=minO;
+    // cây RỘNG vừa cao-nhất vừa thấp-nhất -> chọn phía TRỘI hơn (KHÔNG để đỉnh+đáy cùng 1 nến)
+    if(isH&&isL){ if(cs[i].high-maxO >= minO-cs[i].low) pts.push({idx:i,time:cs[i].time,price:cs[i].high,type:'H'}); else pts.push({idx:i,time:cs[i].time,price:cs[i].low,type:'L'}); }
+    else if(isH) pts.push({idx:i,time:cs[i].time,price:cs[i].high,type:'H'});
+    else if(isL) pts.push({idx:i,time:cs[i].time,price:cs[i].low,type:'L'});
   }
-  if(dir>0) push({idx:hi.idx,time:cs[hi.idx].time,price:hi.p,type:'H'}); else if(dir<0) push({idx:lo.idx,time:cs[lo.idx].time,price:lo.p,type:'L'});
-  return mergeAlt(out);
+  return smoothByLeg(mergeAlt(pts), K);
 }
+// LÀM-MƯỢT: gộp dần swing có nhịp NGẮN NHẤT (<K nến) -> ép mọi leg ≥ K nến (bỏ nốt swing sát nhau).
+function smoothByLeg(sw,K){ K=Math.max(1,K||1); if(K<=1||sw.length<4) return sw; let z=sw.slice();
+  for(let pass=0;pass<300 && z.length>3;pass++){ let rm=-1,best=1e9;
+    for(let i=1;i<z.length-1;i++){ const m=Math.min(z[i].idx-z[i-1].idx, z[i+1].idx-z[i].idx); if(m<K && m<best){best=m;rm=i;} }
+    if(rm<0) break; z.splice(rm,1); z=mergeAlt(z); }
+  return z; }
 
 // ATR rolling (true range trung bình n kỳ) — thước đo biên-độ CỤC-BỘ (cho zigzag + lọc spike).
 function atrSeries(cs,n){ n=n||14; const tr=[],out=[]; for(let i=0;i<cs.length;i++){ const h=cs[i].high,l=cs[i].low,pc=i?cs[i-1].close:cs[i].open;
@@ -227,12 +228,12 @@ function drawOverlay(){
 /* ===================== RECALC ===================== */
 function recalc(){
   if(!candles.length) return;
-  let dev=parseFloat(document.getElementById('dev').value)||1.5; if(dev<0.1)dev=0.1;
-  document.getElementById('devV').textContent=dev+'×ATR'+(dev<=1?' (chi tiết)':dev>=3?' (lớn)':'');
+  let base=parseInt(document.getElementById('base').value)||3; if(base<2)base=2;
+  document.getElementById('baseV').textContent='K='+base+' nến'+(base<=2?' (chi tiết)':base>=8?' (mượt)':'');
   const mult=parseFloat(document.getElementById('spikeMult').value)||3;
   document.getElementById('spikeMultV').textContent='×'+mult;
   const srcCs = document.getElementById('deSpike').checked ? deSpike(candles,mult) : candles;  // cấu trúc dùng nến đã cap-râu; chart vẫn vẽ nến thật
-  algoSwings=swingChain(srcCs,dev);
+  algoSwings=swingChain(srcCs,base);
   if(removedSwings.length) algoSwings=mergeAlt(algoSwings.filter(s=>!removedSwings.includes(s.time)));
   if(Object.keys(movedSwings).length || addedSwings.length){
     algoSwings=algoSwings.map(s=>{ const m=movedSwings[s.time]; return m?{...s,time:m.time,price:m.price,idx:idxAtTime(m.time)}:s; });
@@ -272,7 +273,7 @@ function applyData(){
 
 /* ===================== SỬA TAY: lưu/khôi phục + reset ===================== */
 function drawKey(){ return 'zzc:'+document.getElementById('sym').value.toUpperCase(); }
-function saveUI(){ try{ localStorage.setItem('zzc:ui',JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,dev:document.getElementById('dev').value,showHL:document.getElementById('showHL').checked,showSMC:document.getElementById('showSMC').checked,deSpike:document.getElementById('deSpike').checked,spikeMult:document.getElementById('spikeMult').value})); }catch(e){} }
+function saveUI(){ try{ localStorage.setItem('zzc:ui',JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,base:document.getElementById('base').value,showHL:document.getElementById('showHL').checked,showSMC:document.getElementById('showSMC').checked,deSpike:document.getElementById('deSpike').checked,spikeMult:document.getElementById('spikeMult').value})); }catch(e){} }
 function saveDrawings(){ try{ localStorage.setItem(drawKey(),JSON.stringify({removedSwings,movedSwings,addedSwings})); }catch(e){} saveUI(); }
 function restoreDrawings(){ try{ const o=JSON.parse(localStorage.getItem(drawKey())||'{}'); removedSwings=o.removedSwings||[]; movedSwings=o.movedSwings||{}; addedSwings=o.addedSwings||[]; }catch(e){ removedSwings=[];movedSwings={};addedSwings=[]; } }
 function resetEdits(){ removedSwings=[]; movedSwings={}; addedSwings=[]; saveDrawings(); recalc(); document.getElementById('status').textContent='đã xoá sửa tay'; }
@@ -280,7 +281,7 @@ function resetEdits(){ removedSwings=[]; movedSwings={}; addedSwings=[]; saveDra
 /* ===================== GỬI CHO EM ===================== */
 const RELAY='https://ntfy.sh/rudy-zigzag-lab-7h3k9x2';
 function buildExport(){ return {
-  symbol:document.getElementById('sym').value, tf:document.getElementById('tf').value, dev:parseFloat(document.getElementById('dev').value),
+  symbol:document.getElementById('sym').value, tf:document.getElementById('tf').value, base:parseInt(document.getElementById('base').value),
   nCandles:candles.length, timeRange:candles.length?[candles[0].time,candles[candles.length-1].time]:null,
   algoSwings:algoSwings.map(s=>({t:s.time,p:+s.price.toFixed(5),type:s.type})),
   smc:smcEv.map(e=>({type:e.type,dir:e.dir,level:+e.level.toFixed(5),breakT:candles[e.breakIdx].time})),
@@ -298,7 +299,7 @@ initChart();
 try{ const ui=JSON.parse(localStorage.getItem('zzc:ui')||'{}');
   if(ui.sym) document.getElementById('sym').value=ui.sym;
   if(ui.tf) document.getElementById('tf').value=ui.tf;
-  if(ui.dev!=null){ document.getElementById('dev').value=ui.dev; document.getElementById('devV').textContent=ui.dev+'×ATR'; }
+  if(ui.base!=null){ document.getElementById('base').value=ui.base; document.getElementById('baseV').textContent='K='+ui.base+' nến'; }
   if(ui.showHL!=null) document.getElementById('showHL').checked=ui.showHL;
   if(ui.showSMC!=null) document.getElementById('showSMC').checked=ui.showSMC;
   if(ui.deSpike!=null) document.getElementById('deSpike').checked=ui.deSpike;
