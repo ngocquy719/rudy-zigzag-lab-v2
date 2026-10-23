@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#59 (zigzag ATR-deviation — hết KẸT; mặc định 2×ATR cho thoáng)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#60 (fix: đỉnh+đáy KHÔNG còn cùng 1 nến — cấm đảo trên cây vừa lập cực-trị)</span></h1>
   <div class="ctl">
     <select id="src" onchange="srcChange()">
       <option value="binance">Binance</option>
@@ -85,8 +85,9 @@ function swingChain(cs,dev){
   for(let i=1;i<cs.length;i++){ const c=cs[i], thr=dev*a[i];
     if(c.high>hi.p) hi={idx:i,p:c.high};
     if(c.low<lo.p) lo={idx:i,p:c.low};
-    if(dir>=0 && c.low < hi.p-thr){ push({idx:hi.idx,time:cs[hi.idx].time,price:hi.p,type:'H'}); dir=-1; lo={idx:i,p:c.low}; }
-    else if(dir<=0 && c.high > lo.p+thr){ push({idx:lo.idx,time:cs[lo.idx].time,price:lo.p,type:'L'}); dir=1; hi={idx:i,p:c.high}; }
+    // GUARD hi.idx<i / lo.idx<i: CẤM đảo ngay trên cây vừa lập cực-trị -> đỉnh & đáy KHÔNG BAO GIỜ cùng 1 nến
+    if(dir>=0 && hi.idx<i && c.low < hi.p-thr){ push({idx:hi.idx,time:cs[hi.idx].time,price:hi.p,type:'H'}); dir=-1; lo={idx:i,p:c.low}; }
+    else if(dir<=0 && lo.idx<i && c.high > lo.p+thr){ push({idx:lo.idx,time:cs[lo.idx].time,price:lo.p,type:'L'}); dir=1; hi={idx:i,p:c.high}; }
   }
   if(dir>0) push({idx:hi.idx,time:cs[hi.idx].time,price:hi.p,type:'H'}); else if(dir<0) push({idx:lo.idx,time:cs[lo.idx].time,price:lo.p,type:'L'});
   return mergeAlt(out);
