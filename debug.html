@@ -1,0 +1,88 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Temp-Pivot DEBUG — Rudy đánh dấu sai</title><style>
+html,body{margin:0;background:#0e1117;color:#e6edf3;font:14px -apple-system,Segoe UI,Arial}
+#bar{padding:8px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #30363d}
+input,select,button{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:6px 10px;font-size:14px}
+button{cursor:pointer}button.go{background:#2157f3;border-color:#2157f3}button.send{background:#a371f7;border-color:#a371f7}
+#hint{padding:4px 12px;color:#8b949e;font-size:12px}
+#wrap{position:relative}#cv{display:block;width:100%;touch-action:none}
+#status{padding:4px 12px;color:#58a6ff;font-size:12px;min-height:16px}
+</style></head><body>
+<div id="bar">
+  <b style="color:#58a6ff">🎯 Temp-Pivot DEBUG</b>
+  <input id="sym" value="BTCUSDT" size="9">
+  <select id="tf"><option>1m</option><option>5m</option><option>15m</option><option selected>1h</option><option>4h</option><option>1d</option><option>1w</option></select>
+  <input id="lim" value="400" size="4" title="số nến">
+  <button class="go" onclick="load()">Tải</button>
+  <button onclick="clearMarks()">Xoá dấu</button>
+  <button class="send" onclick="send()">📨 Gửi cho em</button>
+  <span id="status"></span>
+</div>
+<div id="hint">Click VÀO một đỉnh/đáy để <b>đánh dấu SAI</b> (hiện ✕ đỏ). Click lại để bỏ. Zoom: lăn chuột. Kéo: giữ chuột. Xong bấm <b>Gửi cho em</b>.</div>
+<div id="wrap"><canvas id="cv" height="620"></canvas></div>
+<script>
+let cs=[], sw=[], tags=[], wrong=new Set();   // wrong = tập idx swing bị đánh sai
+let view={lo:0,hi:0,i0:0,i1:0};                // vùng nhìn (price + index range)
+const relay='https://ntfy.sh/rudy-zigzag-lab-7h3k9x2';
+function mergeAlt(zz){const r=[];for(const q of zz){if(r.length&&r[r.length-1].type===q.type){const L=r[r.length-1];if((q.type==='H'&&q.price>L.price)||(q.type==='L'&&q.price<L.price))r[r.length-1]=q;}else r.push(q);}return r;}
+// ===== TEMP-PIVOT (method Rudy, bản đã sửa) =====
+function swingChain(cs){if(cs.length<3)return[];const out=[];let dir=0;let HT={idx:0,p:cs[0].high},LT={idx:0,p:cs[0].low},lastHigh=null,lastLow=null,pulled=false;const push=(o,p)=>{if(!o.length||o[o.length-1].idx<p.idx)o.push(p);};
+for(let i=1;i<cs.length;i++){const c=cs[i];
+ if(dir===0){ if(c.high>HT.p){lastLow=LT;push(out,{idx:LT.idx,price:LT.p,type:'L'});HT={idx:i,p:c.high};LT={idx:i,p:c.low};dir=1;} else if(c.low<LT.p){lastHigh=HT;push(out,{idx:HT.idx,price:HT.p,type:'H'});LT={idx:i,p:c.low};HT={idx:i,p:c.high};dir=-1;} continue; }
+ if(dir>0){ if(c.high>HT.p){if(pulled){push(out,{idx:HT.idx,price:HT.p,type:'H'});lastHigh=HT;push(out,{idx:LT.idx,price:LT.p,type:'L'});lastLow=LT;}HT={idx:i,p:c.high};LT={idx:i,p:c.low};pulled=false;}else{if(c.low<LT.p){LT={idx:i,p:c.low};pulled=true;}if(lastLow!=null&&c.low<lastLow.p){push(out,{idx:HT.idx,price:HT.p,type:'H'});lastHigh=HT;dir=-1;LT={idx:i,p:c.low};HT={idx:i,p:c.high};pulled=false;}} }
+ else{ if(c.low<LT.p){if(pulled){push(out,{idx:LT.idx,price:LT.p,type:'L'});lastLow=LT;push(out,{idx:HT.idx,price:HT.p,type:'H'});lastHigh=HT;}LT={idx:i,p:c.low};HT={idx:i,p:c.high};pulled=false;}else{if(c.high>HT.p){HT={idx:i,p:c.high};pulled=true;}if(lastHigh!=null&&c.high>lastHigh.p){push(out,{idx:LT.idx,price:LT.p,type:'L'});lastLow=LT;dir=1;HT={idx:i,p:c.high};LT={idx:i,p:c.low};pulled=false;}} }
+}
+if(dir>0)push(out,{idx:HT.idx,price:HT.p,type:'H'});else if(dir<0)push(out,{idx:LT.idx,price:LT.p,type:'L'});return mergeAlt(out);}
+function tagSw(sw){let lH=null,lL=null;return sw.map(s=>{let t;if(s.type==='H'){t=lH==null?'H':(s.price>lH?'HH':'LH');lH=s.price;}else{t=lL==null?'L':(s.price<lL?'LL':'HL');lL=s.price;}return t;});}
+async function load(){
+  const sym=document.getElementById('sym').value.toUpperCase(), tf=document.getElementById('tf').value, lim=document.getElementById('lim').value||400;
+  st('đang tải '+sym+' '+tf+'…');
+  try{ const r=await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=${lim}`); const d=await r.json();
+    if(!Array.isArray(d))throw 0; cs=d.map(k=>({time:Math.floor(k[0]/1000),open:+k[1],high:+k[2],low:+k[3],close:+k[4]}));
+    sw=swingChain(cs); tags=tagSw(sw); wrong=new Set(); resetView(); draw(); st(sym+' '+tf+' · '+cs.length+' nến · '+sw.length+' swing. Click đỉnh/đáy SAI để đánh dấu.');
+  }catch(e){ st('❌ lỗi tải (mã sai hoặc Binance chặn)'); }
+}
+function resetView(){ view.i0=0; view.i1=cs.length-1; recomputeY(); }
+function recomputeY(){ let lo=1e18,hi=-1e18; for(let i=view.i0;i<=view.i1;i++){ if(cs[i].low<lo)lo=cs[i].low; if(cs[i].high>hi)hi=cs[i].high; } const pd=(hi-lo)*.05; view.lo=lo-pd; view.hi=hi+pd; }
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+function fit(){ cv.width=cv.clientWidth*(window.devicePixelRatio||1); cv.height=620*(window.devicePixelRatio||1); ctx.setTransform(window.devicePixelRatio||1,0,0,window.devicePixelRatio||1,0,0); }
+const PR=70,PT=10,PB=16;
+function X(i){ const w=cv.clientWidth; const n=view.i1-view.i0; return (i-view.i0)/(n||1)*(w-8-PR)+8; }
+function Y(p){ const h=620; return PT+(view.hi-p)/(view.hi-view.lo||1)*(h-PT-PB); }
+function draw(){
+  fit(); const w=cv.clientWidth,h=620; ctx.clearRect(0,0,w,h);
+  const n=view.i1-view.i0, bw=(w-8-PR)/((n||1)+1);
+  for(let i=view.i0;i<=view.i1;i++){ const c=cs[i],xx=X(i),up=c.close>=c.open; ctx.strokeStyle=up?'#26a69a':'#ef5350'; ctx.fillStyle=ctx.strokeStyle;
+    ctx.beginPath();ctx.moveTo(xx,Y(c.high));ctx.lineTo(xx,Y(c.low));ctx.stroke();
+    ctx.fillRect(xx-Math.max(1,bw*.3),Y(Math.max(c.open,c.close)),Math.max(1.5,bw*.6),Math.max(1,Math.abs(Y(c.open)-Y(c.close)))); }
+  // zigzag + nhãn
+  for(let i=0;i+1<sw.length;i++){ const t2=tags[i+1]; const bold=(t2==='HH'||t2==='LL'||t2==='H'||t2==='L');
+    ctx.strokeStyle=bold?((t2==='HH'||t2==='H')?'#3fb950':'#f85149'):'#5a6472'; ctx.lineWidth=bold?2.2:1; if(!bold)ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(X(sw[i].idx),Y(sw[i].price));ctx.lineTo(X(sw[i+1].idx),Y(sw[i+1].price));ctx.stroke();ctx.setLineDash([]); }
+  ctx.lineWidth=1;ctx.font='700 11px Segoe UI';ctx.textAlign='center';
+  for(let i=0;i<sw.length;i++){ const s=sw[i],t=tags[i],xx=X(s.idx),yy=Y(s.price);
+    ctx.fillStyle=(t==='HH'||t==='HL')?'#3fb950':(t==='LH'||t==='LL')?'#f85149':'#c9d1d9'; ctx.fillText(t,xx,s.type==='H'?yy-7:yy+13);
+    if(wrong.has(i)){ ctx.strokeStyle='#ff2d55';ctx.lineWidth=2.5;const r=7;ctx.beginPath();ctx.moveTo(xx-r,yy-r);ctx.lineTo(xx+r,yy+r);ctx.moveTo(xx+r,yy-r);ctx.lineTo(xx-r,yy+r);ctx.stroke();ctx.lineWidth=1; } }
+  // trục giá
+  ctx.fillStyle='#8b949e';ctx.textAlign='left';ctx.font='10px Segoe UI';for(let k=0;k<=5;k++){const p=view.lo+(view.hi-view.lo)*k/5;ctx.fillText(p.toFixed(0),w-PR+4,Y(p)+3);}
+}
+// click = đánh dấu swing gần nhất
+cv.addEventListener('click',e=>{ if(!sw.length)return; const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  let best=-1,bd=1e9; for(let i=0;i<sw.length;i++){ const s=sw[i]; if(s.idx<view.i0||s.idx>view.i1)continue; const d=Math.hypot(X(s.idx)-mx,Y(s.price)-my); if(d<bd){bd=d;best=i;} }
+  if(best>=0&&bd<18){ if(wrong.has(best))wrong.delete(best); else wrong.add(best); draw(); st(wrong.size+' điểm đánh dấu SAI'); } });
+// zoom (wheel) + pan (drag)
+cv.addEventListener('wheel',e=>{ if(!cs.length)return; e.preventDefault(); const r=cv.getBoundingClientRect(),mx=e.clientX-r.left; const w=cv.clientWidth; const frac=(mx-8)/(w-8-PR); const n=view.i1-view.i0; const z=e.deltaY<0?0.85:1.18; let nn=Math.max(10,Math.min(cs.length-1,Math.round(n*z))); const center=view.i0+frac*n; view.i0=Math.max(0,Math.round(center-frac*nn)); view.i1=Math.min(cs.length-1,view.i0+nn); if(view.i1-view.i0<nn)view.i0=Math.max(0,view.i1-nn); recomputeY(); draw(); },{passive:false});
+let drag=null;
+cv.addEventListener('mousedown',e=>{drag={x:e.clientX,i0:view.i0,i1:view.i1,moved:false};});
+window.addEventListener('mousemove',e=>{ if(!drag||!cs.length)return; const w=cv.clientWidth,n=drag.i1-drag.i0; const dx=Math.round((e.clientX-drag.x)/((w-8-PR)/(n||1))); if(Math.abs(e.clientX-drag.x)>3)drag.moved=true; let i0=drag.i0-dx; i0=Math.max(0,Math.min(cs.length-1-n,i0)); view.i0=i0;view.i1=i0+n; recomputeY(); draw(); });
+window.addEventListener('mouseup',e=>{ if(drag&&drag.moved){ e.stopPropagation(); } drag=null; });
+window.addEventListener('resize',()=>{ if(cs.length)draw(); });
+function clearMarks(){ wrong=new Set(); draw(); st('đã xoá dấu'); }
+async function send(){ if(!sw.length){st('chưa có data');return;}
+  const payload={kind:'temp-pivot-debug',symbol:document.getElementById('sym').value.toUpperCase(),tf:document.getElementById('tf').value,
+    swings:sw.map((s,i)=>({t:cs[s.idx].time,p:+s.price.toFixed(2),type:s.type,tag:tags[i],wrong:wrong.has(i)})),
+    wrongCount:wrong.size };
+  st('đang gửi…'); try{ await fetch(relay,{method:'POST',body:JSON.stringify(payload)}); st('✅ đã gửi '+wrong.size+' điểm sai cho em (em sẽ soi và sửa thuật toán)'); }catch(e){ st('❌ gửi lỗi'); } }
+function st(t){ document.getElementById('status').textContent=t; }
+load();
+</script></body></html>
