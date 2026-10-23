@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#41 (hiện nhãn HH/HL/LH/LL + BOS/CHoCH trên từng sóng)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#42 (BOS/CHoCH luôn hiện + nút ẩn HH/HL cho đỡ rối)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -87,6 +87,7 @@
   </div>
   <div class="ctl" id="stratCtl">
     <label title="Hiện nhãn BOS/CHoCH + fibo"><input id="showSmc" type="checkbox" checked onchange="recalc()"> BOS/CHoCH + Fibo</label>
+    <label title="Hiện nhãn đỉnh/đáy HH·HL·LH·LL (tắt cho đỡ rối, chỉ xem BOS/CHoCH)"><input id="showHL" type="checkbox" checked onchange="drawOverlay();saveUI()"> HH/HL</label>
     <label title="Chạy kèo đa-khung: khung lớn BOS+discount, khung nhỏ CHoCH vào lệnh"><input id="runStrat" type="checkbox" onchange="toggleStrat()"> Chạy kèo</label>
     <label>Khung nhỏ:</label>
     <select id="stf" onchange="if(document.getElementById('runStrat').checked) loadSmall()">
@@ -252,7 +253,7 @@ function drawOverlay(){
   if(document.getElementById('algo').value==='fractal' && document.getElementById('showSmc').checked){
     drawFibZone(w);
     // VÙNG RANGE: mode box -> khoanh hộp "chờ phá"; mode flat -> gạch ngang mờ (sóng đã ẩn khỏi zigzag)
-    const rmode=(document.getElementById('rangeMode')||{}).value||'box';
+    const rmode=(parseInt(document.getElementById('detail').value)<=0)?((document.getElementById('rangeMode')||{}).value||'box'):'full';
     if(rmode==='box'||rmode==='flat'){
       for(const r of (smc.regions||[])){ const a=algoSwings[r[0]], b=algoSwings[r[1]]; if(!a||!b) continue;
         let rlo=Infinity,rhi=-Infinity; for(let k=a.idx;k<=b.idx&&k<candles.length;k++){ if(candles[k].low<rlo)rlo=candles[k].low; if(candles[k].high>rhi)rhi=candles[k].high; }
@@ -282,7 +283,8 @@ function drawOverlay(){
       } else { octx.beginPath(); octx.moveTo(x1,y); octx.lineTo(x2,y); octx.stroke();
         octx.setLineDash([]); octx.fillStyle=col; octx.textAlign='center'; octx.fillText(lbl,xMid,y-7); }
     }
-    // ===== nhãn HH/HL/LH/LL trên TỪNG đỉnh/đáy (bỏ qua swing trong range ở mode box/flat) =====
+    // ===== nhãn HH/HL/LH/LL trên TỪNG đỉnh/đáy (có nút ẩn; bỏ qua swing trong range ở mode box/flat) =====
+    const showHL=document.getElementById('showHL'); if(showHL && showHL.checked){
     octx.textBaseline='middle'; octx.font='700 11px system-ui,Segoe UI,Arial';
     let lastH=null,lastL=null;
     for(let i=0;i<algoSwings.length;i++){ const s=algoSwings[i];
@@ -292,6 +294,7 @@ function drawOverlay(){
       let xx=ts.timeToCoordinate(s.time); if(xx==null) continue;
       octx.fillStyle=(tag==='HH'||tag==='HL')?'#3fb950':(tag==='LH'||tag==='LL')?'#f85149':'#c9d1d9';
       octx.textAlign='center'; octx.fillText(tag, xx, s.type==='H'? yy-11 : yy+11);
+    }
     }
   }
   drawZones(w,vr); drawPosition(w,vr); drawNotes(w,vr);
@@ -753,9 +756,10 @@ function recalc(){
   }
   if(removedSwings.length) algoSwings=mergeAlt(algoSwings.filter(s=>!removedSwings.includes(s.time)));  // gỡ sóng bỏ tay + gộp lại alternation (tránh 2 đỉnh/2 đáy liên tiếp)
   // ===== phân tích SMC (BOS/CHoCH + vùng range) + chế độ hiển thị range =====
-  const isBOS = document.getElementById('algo').value==='fractal' && parseInt(document.getElementById('detail').value)<=0;
-  smc = isBOS ? smcAnalyze(algoSwings) : {ev:[],orphan:new Array(algoSwings.length).fill(false),regions:[]};
-  const rmode = (document.getElementById('rangeMode')||{}).value || 'box';
+  const isFrac = document.getElementById('algo').value==='fractal';
+  const deg0 = parseInt(document.getElementById('detail').value)<=0;
+  smc = isFrac ? smcAnalyze(algoSwings) : {ev:[],orphan:new Array(algoSwings.length).fill(false),regions:[]};  // LUÔN gắn BOS/CHoCH
+  const rmode = deg0 ? ((document.getElementById('rangeMode')||{}).value || 'box') : 'full';  // sóng-con: hiện hết, không khoanh range
   // box/flat: ẩn sóng trong range khỏi đường zigzag (chỉ còn cấu-trúc BOS/CHoCH); full: hiện hết
   const lineSw = (rmode!=='full') ? algoSwings.filter((s,i)=>!smc.orphan[i]) : algoSwings;
   // đảm bảo thời gian tăng dần (lightweight-charts yêu cầu). KHI 1 nến vừa là đỉnh vừa là đáy
@@ -822,7 +826,7 @@ function onChartClick(param){
 }
 // ---- lưu/khôi phục theo mã (F5 không mất việc) ----
 function drawKey(){ return 'zz:'+document.getElementById('sym').value.toUpperCase(); }   // nét theo MÃ (đổi khung không mất)
-function saveUI(){ try{ localStorage.setItem('zz:ui', JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,detail:document.getElementById('detail').value,rangeMode:(document.getElementById('rangeMode')||{}).value,fvg:!!(document.getElementById('showFvg')&&document.getElementById('showFvg').checked)})); }catch(e){} }
+function saveUI(){ try{ localStorage.setItem('zz:ui', JSON.stringify({sym:document.getElementById('sym').value,tf:document.getElementById('tf').value,detail:document.getElementById('detail').value,rangeMode:(document.getElementById('rangeMode')||{}).value,showHL:!!(document.getElementById('showHL')&&document.getElementById('showHL').checked),fvg:!!(document.getElementById('showFvg')&&document.getElementById('showFvg').checked)})); }catch(e){} }
 function saveDrawings(){ try{ localStorage.setItem(drawKey(), JSON.stringify({userPoints,posOrder,userNotes,zones,removedSwings})); }catch(e){} saveUI(); }
 function restoreDrawings(){ try{ const s=localStorage.getItem(drawKey()); const o=s?JSON.parse(s):{}; userPoints=o.userPoints||[]; posOrder=o.posOrder||null; userNotes=o.userNotes||[]; zones=o.zones||[]; removedSwings=o.removedSwings||[]; }catch(e){ userPoints=[];posOrder=null;userNotes=[];zones=[];removedSwings=[]; } renderUser(); drawOverlay(); }
 function renderUser(){
@@ -1016,6 +1020,7 @@ try{ const ui=JSON.parse(localStorage.getItem('zz:ui')||'{}');
   if(ui.tf) document.getElementById('tf').value=ui.tf;
   if(ui.detail!=null){ const dEl=document.getElementById('detail'); dEl.value=Math.min(6,Math.max(0,ui.detail|0)); document.getElementById('detailV').textContent=dEl.value<=0?'CẤU-TRÚC (BOS)':'sóng con bậc '+dEl.value; }
   if(ui.rangeMode && document.getElementById('rangeMode')) document.getElementById('rangeMode').value=ui.rangeMode;
+  if(ui.showHL!=null && document.getElementById('showHL')) document.getElementById('showHL').checked=ui.showHL;
   if(ui.fvg) document.getElementById('showFvg').checked=true;
 }catch(e){}
 loadBinance();
