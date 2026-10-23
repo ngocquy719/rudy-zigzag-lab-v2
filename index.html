@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#42 (BOS/CHoCH luôn hiện + nút ẩn HH/HL cho đỡ rối)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#43 (CẤU-TRÚC CHẶT THEO BIAS: sau CHoCH-up chỉ HH/HL, không LH giữa uptrend)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -521,23 +521,36 @@ function reduceOnce(zz){
 }
 function degreeZZ(cs,deg){ let z=baseZZ(cs); for(let k=0;k<Math.max(0,deg);k++) z=reduceOnce(z); return z; }
 
-// ========== CẤU-TRÚC BẰNG BOS NHÂN-QUẢ (luật Rudy: chỉ chốt pivot khi ĐÓNG NẾN phá đỉnh/đáy cũ) ==========
-// Không ngưỡng. Fractal baseZZ = ứng-viên; giá đóng nến vượt kháng-cự -> xác-nhận đáy-hồi là HL (và ngược lại).
-// "armUp/armDn" chờ có nhịp hồi (fractal ngược) mới cho BOS -> chống tái-kích. KHÔNG vẽ pivot chưa phá vỡ.
+// ========== CẤU-TRÚC CHẶT THEO BIAS (luật Rudy 23/10) ==========
+// Sau CHoCH UP (bias=+1) chỉ được HH/HL cho tới CHoCH DOWN — TUYỆT ĐỐI không đỉnh-thấp-hơn giữa uptrend.
+// Đỉnh BỊ PHÁ lên = HH xác-nhận + đáy-hồi = HL; giá đóng nến thủng đáy-hồi cuối (swLow) = CHoCH down -> đảo bias.
+// Mỗi con sóng vì thế LUÔN hiểu được là BOS (thuận) hay CHoCH (đảo). Không ngưỡng.
 function structureBOS(cs){
   const f=baseZZ(cs); if(f.length<3) return f.slice();
-  const fL=new Set(), fH=new Set(); for(const fr of f){ (fr.type==='H'?fH:fL).add(fr.idx); }
+  const fH=new Set(), fL=new Set(); for(const fr of f){ (fr.type==='H'?fH:fL).add(fr.idx); }
   const firstH=f.find(x=>x.type==='H'), firstL=f.find(x=>x.type==='L'); if(!firstH||!firstL) return f.slice();
-  const out=[]; let anchorHigh={idx:firstH.idx,price:firstH.price}, anchorLow={idx:firstL.idx,price:firstL.price}, dir=0;
-  let hiP=-Infinity,hiI=-1, loP=Infinity,loI=-1, armUp=true, armDn=true;
+  const out=[]; let bias=0;
+  let swHigh={idx:firstH.idx,price:firstH.price}, swLow={idx:firstL.idx,price:firstL.price};
+  let rhP=-Infinity,rhI=-1, rlP=Infinity,rlI=-1, armUp=true, armDn=true;
+  const start=Math.min(firstH.idx,firstL.idx);
   out.push(firstH.idx<firstL.idx?{idx:firstH.idx,time:cs[firstH.idx].time,price:firstH.price,type:'H'}:{idx:firstL.idx,time:cs[firstL.idx].time,price:firstL.price,type:'L'});
-  for(let i=Math.min(firstH.idx,firstL.idx)+1;i<cs.length;i++){
-    if(cs[i].high>hiP){hiP=cs[i].high;hiI=i;} if(cs[i].low<loP){loP=cs[i].low;loI=i;}
+  for(let i=start+1;i<cs.length;i++){
+    if(cs[i].high>rhP){rhP=cs[i].high;rhI=i;} if(cs[i].low<rlP){rlP=cs[i].low;rlI=i;}
     if(fL.has(i)) armUp=true; if(fH.has(i)) armDn=true;
-    if(armUp && cs[i].close>anchorHigh.price){ if(loI>anchorHigh.idx) out.push({idx:loI,time:cs[loI].time,price:loP,type:'L'}); anchorLow={idx:loI,price:loP}; anchorHigh={idx:hiI,price:hiP}; loP=Infinity;loI=-1; dir=1; armUp=false; }
-    else if(armDn && cs[i].close<anchorLow.price){ if(hiI>anchorLow.idx) out.push({idx:hiI,time:cs[hiI].time,price:hiP,type:'H'}); anchorHigh={idx:hiI,price:hiP}; anchorLow={idx:loI,price:loP}; hiP=-Infinity;hiI=-1; dir=-1; armDn=false; }
+    if(armUp && cs[i].close>swHigh.price){
+      out.push({idx:swHigh.idx,time:cs[swHigh.idx].time,price:swHigh.price,type:'H'});           // đỉnh bị phá = HH
+      if(rlI>swHigh.idx && rlP<Infinity) out.push({idx:rlI,time:cs[rlI].time,price:rlP,type:'L'}); // đáy hồi = HL
+      swLow={idx:rlI,price:rlP}; swHigh={idx:rhI,price:rhP}; rlP=Infinity;rlI=-1; bias=1; armUp=false;
+    } else if(armDn && cs[i].close<swLow.price){
+      out.push({idx:swLow.idx,time:cs[swLow.idx].time,price:swLow.price,type:'L'});               // đáy bị phá = LL
+      if(rhI>swLow.idx && rhP>-Infinity) out.push({idx:rhI,time:cs[rhI].time,price:rhP,type:'H'}); // đỉnh hồi = LH
+      swHigh={idx:rhI,price:rhP}; swLow={idx:rlI,price:rlP}; rhP=-Infinity;rhI=-1; bias=-1; armDn=false;
+    } else {
+      if(bias>0 && !armUp && rhI>=0) swHigh={idx:rhI,price:rhP};   // uptrend: bám đỉnh đang lên tới khi có nhịp hồi
+      if(bias<0 && !armDn && rlI>=0) swLow={idx:rlI,price:rlP};
+    }
   }
-  return mergeAlt(out);   // KHÔNG đuôi tentative: nhánh chưa phá vỡ -> để trống (muốn chi tiết thì xuống khung nhỏ)
+  return mergeAlt(out);
 }
 // Phân tích SMC trên bộ swing: gắn BOS/CHoCH cho mỗi cú phá vỡ + đánh dấu swing/vùng RANGE (không thuộc phá vỡ nào).
 // Luật Rudy: mỗi con sóng phải HIỂU là BOS hay CHoCH; sóng không phá vỡ gì (vùng sideway) = không vẽ như cấu-trúc.
