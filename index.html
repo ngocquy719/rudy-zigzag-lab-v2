@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#46 (tách sườn CẤU-TRÚC đậm vs sườn HỒI mờ; xác nhận luật A-M đúng)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#47 (fix bug re-emit khi CHoCH -> hết swing lọt giữa swing mẹ)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -538,6 +538,9 @@ function degreeZZ(cs,deg){ let z=baseZZ(cs); for(let k=0;k<Math.max(0,deg);k++) 
 // Sau CHoCH UP (bias=+1) chỉ được HH/HL cho tới CHoCH DOWN — TUYỆT ĐỐI không đỉnh-thấp-hơn giữa uptrend.
 // Đỉnh BỊ PHÁ lên = HH xác-nhận + đáy-hồi = HL; giá đóng nến thủng đáy-hồi cuối (swLow) = CHoCH down -> đảo bias.
 // Mỗi con sóng vì thế LUÔN hiểu được là BOS (thuận) hay CHoCH (đảo). Không ngưỡng.
+// pushSw: CHỈ thêm swing TIẾN tới (idx tăng). Khi CHoCH đảo chiều, đỉnh/đáy bị-phá là swing CŨ
+// đã có trong cấu trúc -> KHÔNG re-emit (tránh "swing lọt giữa swing mẹ" — bug Rudy chỉ).
+function pushSw(o,s){ if(!o.length || s.idx>o[o.length-1].idx) o.push(s); }
 function structureBOS(cs){
   const f=baseZZ(cs); if(f.length<3) return f.slice();
   const fH=new Set(), fL=new Set(); for(const fr of f){ (fr.type==='H'?fH:fL).add(fr.idx); }
@@ -552,13 +555,13 @@ function structureBOS(cs){
     if(fL.has(i)) armUp=true; if(fH.has(i)) armDn=true;
     if(armUp && cs[i].high>swHigh.price){   // phá bằng RÂU NẾN (đỉnh/đáy tạm) — chặt, cấu-trúc đơn-điệu tuyệt đối
       ev.push({type:bias>=0?'BOS':'CHoCH',pivotIdx:swHigh.idx,level:swHigh.price,breakIdx:i});     // mỗi phá vỡ = 1 nhãn
-      out.push({idx:swHigh.idx,time:cs[swHigh.idx].time,price:swHigh.price,type:'H'});           // đỉnh bị phá = HH
-      if(rlI>swHigh.idx && rlP<Infinity) out.push({idx:rlI,time:cs[rlI].time,price:rlP,type:'L'}); // đáy hồi = HL
+      pushSw(out,{idx:swHigh.idx,time:cs[swHigh.idx].time,price:swHigh.price,type:'H'});           // đỉnh bị phá = HH
+      if(rlI>swHigh.idx && rlP<Infinity) pushSw(out,{idx:rlI,time:cs[rlI].time,price:rlP,type:'L'}); // đáy hồi = HL
       swLow={idx:rlI,price:rlP}; swHigh={idx:rhI,price:rhP}; rlP=Infinity;rlI=-1; bias=1; armUp=false;
     } else if(armDn && cs[i].low<swLow.price){
       ev.push({type:bias<=0?'BOS':'CHoCH',pivotIdx:swLow.idx,level:swLow.price,breakIdx:i});
-      out.push({idx:swLow.idx,time:cs[swLow.idx].time,price:swLow.price,type:'L'});               // đáy bị phá = LL
-      if(rhI>swLow.idx && rhP>-Infinity) out.push({idx:rhI,time:cs[rhI].time,price:rhP,type:'H'}); // đỉnh hồi = LH
+      pushSw(out,{idx:swLow.idx,time:cs[swLow.idx].time,price:swLow.price,type:'L'});               // đáy bị phá = LL
+      if(rhI>swLow.idx && rhP>-Infinity) pushSw(out,{idx:rhI,time:cs[rhI].time,price:rhP,type:'H'}); // đỉnh hồi = LH
       swHigh={idx:rhI,price:rhP}; swLow={idx:rlI,price:rlP}; rhP=-Infinity;rhI=-1; bias=-1; armDn=false;
     } else {
       if(bias>0 && !armUp && rhI>=0) swHigh={idx:rhI,price:rhP};   // uptrend: bám đỉnh đang lên tới khi có nhịp hồi
