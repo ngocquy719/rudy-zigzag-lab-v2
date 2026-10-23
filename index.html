@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#49 (đủ 4 trường-hợp hợp-lệ: loại CHoCH-giả RGR/GRG + 2-nét-mờ, gỡ 1-lượt ko sập)</span></h1>
+  <h1>🎯 Rudy Zigzag Lab <span style="font-size:10px;color:#58a6ff;font-weight:400">build 2026-10-23·#50 (phá vỡ CLOSE-based: đóng nến vượt râu đỉnh/đáy cũ - luật Rudy)</span></h1>
   <div class="ctl">
     <label>Nguồn:</label>
     <select id="src">
@@ -553,12 +553,12 @@ function structureBOS(cs){
   for(let i=start+1;i<cs.length;i++){
     if(cs[i].high>rhP){rhP=cs[i].high;rhI=i;} if(cs[i].low<rlP){rlP=cs[i].low;rlI=i;}
     if(fL.has(i)) armUp=true; if(fH.has(i)) armDn=true;
-    if(armUp && cs[i].high>swHigh.price){   // phá bằng RÂU NẾN (đỉnh/đáy tạm) — chặt, cấu-trúc đơn-điệu tuyệt đối
+    if(armUp && cs[i].close>swHigh.price){   // luật Rudy: ĐÓNG NẾN (body) vượt RÂU đỉnh cũ mới tính phá vỡ
       ev.push({type:bias>=0?'BOS':'CHoCH',pivotIdx:swHigh.idx,level:swHigh.price,breakIdx:i});     // mỗi phá vỡ = 1 nhãn
       pushSw(out,{idx:swHigh.idx,time:cs[swHigh.idx].time,price:swHigh.price,type:'H'});           // đỉnh bị phá = HH
       if(rlI>swHigh.idx && rlP<Infinity) pushSw(out,{idx:rlI,time:cs[rlI].time,price:rlP,type:'L'}); // đáy hồi = HL
       swLow={idx:rlI,price:rlP}; swHigh={idx:rhI,price:rhP}; rlP=Infinity;rlI=-1; bias=1; armUp=false;
-    } else if(armDn && cs[i].low<swLow.price){
+    } else if(armDn && cs[i].close<swLow.price){   // ĐÓNG NẾN thủng RÂU đáy cũ
       ev.push({type:bias<=0?'BOS':'CHoCH',pivotIdx:swLow.idx,level:swLow.price,breakIdx:i});
       pushSw(out,{idx:swLow.idx,time:cs[swLow.idx].time,price:swLow.price,type:'L'});               // đáy bị phá = LL
       if(rhI>swLow.idx && rhP>-Infinity) pushSw(out,{idx:rhI,time:cs[rhI].time,price:rhP,type:'H'}); // đỉnh hồi = LH
@@ -583,7 +583,7 @@ function clean1pass(sw){ const tg=tagSwings(sw); const rm=new Set();
     if((a==='R'&&b==='G'&&c==='R')||(a==='G'&&b==='R'&&c==='G')) rm.add(i+2); } // CHoCH-giả -> bỏ đỉnh/đáy giả
   return rm.size? mergeAlt(sw.filter((s,i)=>!rm.has(i))) : sw; }
 function alternateStruct(sw){ let z=sw.slice();
-  for(let r=0;r<6;r++){ const n=clean1pass(z); if(n.length===z.length){ z=n; break; } z=n; }
+  for(let r=0;r<2;r++){ const n=clean1pass(z); if(n.length===z.length){ z=n; break; } z=n; }  // 2 lượt (nhiều hơn dễ cascade sập)
   return z; }
 // Phân tích SMC trên bộ swing: gắn BOS/CHoCH cho mỗi cú phá vỡ + đánh dấu swing/vùng RANGE (không thuộc phá vỡ nào).
 // Luật Rudy: mỗi con sóng phải HIỂU là BOS hay CHoCH; sóng không phá vỡ gì (vùng sideway) = không vẽ như cấu-trúc.
