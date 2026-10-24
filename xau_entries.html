@@ -73,7 +73,7 @@ function redrawLevels(){
 function sel(i){const e=DATA.entries[i];curEntry=i;
  document.querySelectorAll('.it').forEach((x,k)=>x.classList.toggle('sel',k===i));
  redrawLevels();
- chart.timeScale().setVisibleRange({from:e.time-140*300,to:e.time+80*300});
+ const f=Math.min(e.sut,e.time)-24*3600;chart.timeScale().setVisibleRange({from:f,to:e.time+8*3600});
  const d=e.dir===1?'BUY':'SELL',mid=((e.xhi+e.xlo)/2).toFixed(2);
  document.getElementById('bar').innerHTML=`<b class="${e.dir===1?'buy':'sell'}">${d}</b> ${e.typ} · ${fmt(e.time)} UTC · ENTRY <b>${e.entry}</b> · SL ${e.sl} · TP ${e.tp} · RR <b>${e.rr}</b> · <b class="${e.R>0?'win':'loss'}">${e.R>0?'WIN +'+e.rr+'R':'LOSS -1R'}</b> · <span class="muted">0.5=${mid}</span>`;}
 const list=document.getElementById('list');
