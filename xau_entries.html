@@ -11,7 +11,7 @@
 #bar{padding:6px 12px;border-bottom:1px solid #30363d;font-size:13px}#chart{flex:1;position:relative}
 .muted{color:#8b949e}#tog{font-size:11px;margin:4px 10px 6px;line-height:1.7}#tog label{margin-right:9px;cursor:pointer;white-space:nowrap}
 </style></head><body>
-<div id="side"><h3>35 ENTRY (Aug-Oct 2026)</h3>
+<div id="side"><h3 id="hdr">ENTRY (Aug-Oct 2026)</h3>
 <div id="tog">
 <label><input type="checkbox" id="tH1" checked> zigzag H1</label>
 <label><input type="checkbox" id="tBos" checked> BOS/CHoCH H1</label>
@@ -87,5 +87,5 @@ document.getElementById('tH1').onchange=ev=>h1.applyOptions({visible:ev.target.c
 document.getElementById('tM5').onchange=ev=>m5.applyOptions({visible:ev.target.checked});
 ['tBos','tM5c','tDis'].forEach(id=>document.getElementById(id).onchange=draw);
 document.getElementById('tFib').onchange=redrawLevels;
-sel(DATA.entries.length-1);
+document.getElementById('hdr').textContent=DATA.entries.length+' ENTRY (Aug-Oct 2026)';sel(DATA.entries.length-1);
 </script></body></html>
